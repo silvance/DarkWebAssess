@@ -75,18 +75,38 @@ tests/
 
 ## Quick start
 
+The fastest path: run the one-shot launcher. It pulls the latest commit
+(if you're in a git checkout), creates `.venv/`, installs/updates
+requirements, initializes the database, syncs `sources.yaml` +
+`watchlist.yaml`, and launches the Streamlit dashboard.
+
+```bash
+# Linux / macOS
+./run.sh                  # default: launch the dashboard
+./run.sh collect          # one collection cycle and exit
+./run.sh scheduler        # run the scheduler in the foreground
+./run.sh setup            # bootstrap only (no launch)
+
+# Windows
+run.bat
+run.bat collect
+
+# Anywhere
+python launch.py [dashboard|collect|scheduler|setup|update]
+```
+
+Useful flags: `--no-pull` (skip git pull), `--no-install` (skip pip), `--port 8502`,
+`--reinstall` (force pip install even if `requirements.txt` is unchanged).
+
+If you'd rather wire it up by hand:
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 1. Initialize the SQLite DB and load sources/watchlist.
 python -m app.main init-db
 python -m app.main sync-config
-
-# 2. Pull the feeds, store new docs, extract entities, run matches.
 python -m app.main collect
-
-# 3. Browse results.
 streamlit run app/ui/streamlit_app.py
 ```
 
