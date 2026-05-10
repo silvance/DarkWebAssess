@@ -45,6 +45,9 @@ In scope for Milestone 1:
 - Hardening: opt-in dashboard auth (bcrypt + 3 roles), audit log,
   backup/restore CLI using SQLite's online backup, and a Docker Compose
   deployment recipe with web + scheduler services.
+- Relationship mapping: pivot from any extracted entity to its
+  co-occurring neighbors (ranked by shared documents) with a Graphviz
+  mini-graph in the dashboard and a `pivot` CLI command.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -70,6 +73,9 @@ app/
   cases/                        # case repository + markdown exporter
   reports/                      # report templates + renderers (md/html/json)
   auth/                         # bcrypt users, role checks, audit log, login gate
+  graph/                        # entity co-occurrence relationships
+  cli/                          # one module per subcommand group
+  pipeline.py                   # process_document + collect/enrich cycles
   entry.py                      # unified entry point used by the .exe build
   alerts/telegram.py
   ui/streamlit_app.py
@@ -163,6 +169,8 @@ python -m app.main user disable alice
 python -m app.main backup                              # writes data/backup-<UTC>.db
 python -m app.main backup --output /backups/mtl.db
 python -m app.main restore /backups/mtl.db --force
+python -m app.main pivot domain:example.com            # relationship pivot from CLI
+python -m app.main pivot cve:CVE-2024-3400 --neighbor-type domain --limit 10
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -283,6 +291,13 @@ a single self-contained `.exe` (Windows) or binary (macOS/Linux). The
 build is a "onedir" bundle — `dist/mini-threat-intel/` contains the
 executable plus the supporting libs and bundled YAML configs.
 
+CI builds are wired up: every push, PR, and tagged release runs the
+[`build-exe`](.github/workflows/build-exe.yml) workflow on a Windows
+runner and uploads the resulting bundle as a downloadable artifact.
+Tagged releases (`v*`) also attach the zip to the GitHub Release page.
+
+To build locally:
+
 ```bash
 # 1. Install build deps (adds PyInstaller on top of the runtime requirements)
 pip install -r requirements-build.txt
@@ -321,9 +336,9 @@ Frozen runtime behavior:
 ## Status
 
 Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
-search), 11 (LLM analyst summaries), 12 (case management), 13 (reporting),
-and 14 (production hardening) of the larger phased plan. See *Roadmap* for
-what comes next.
+search), 10 (relationship mapping), 11 (LLM analyst summaries), 12 (case
+management), 13 (reporting), and 14 (production hardening) of the larger
+phased plan. See *Roadmap* for what comes next.
 
 ## Roadmap
 

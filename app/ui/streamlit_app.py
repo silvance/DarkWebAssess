@@ -825,11 +825,94 @@ def page_admin():
         st.caption("No audit entries yet.")
 
 
+def page_relationships():
+    """Pivot from a chosen entity to its co-occurrence neighbors."""
+    from app.graph.relationships import (
+        build_graphviz,
+        entity_summary,
+        list_entity_types,
+        neighbors,
+        related_documents,
+    )
+
+    st.title("Relationships")
+    st.caption(
+        "Two entities are 'related' when they appear in the same document. "
+        "Pick an entity below to see what it co-occurs with, ranked by shared docs."
+    )
+
+    types = list_entity_types(_conn())
+    if not types:
+        st.info("No entities collected yet. Run `python -m app.main collect` to get started.")
+        return
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        etype = st.selectbox("Entity type", types)
+    with col2:
+        rows = _query(
+            "SELECT entity_value, COUNT(DISTINCT document_id) AS n "
+            "FROM entities WHERE entity_type = ? "
+            "GROUP BY entity_value ORDER BY n DESC, entity_value LIMIT 1000",
+            (etype,),
+        )
+        values = rows["entity_value"].tolist() if not rows.empty else []
+        evalue = st.selectbox("Entity value", values) if values else None
+
+    if not (etype and evalue):
+        return
+
+    summary = entity_summary(_conn(), etype, evalue)
+    st.markdown(f"### `{etype}:` **{evalue}**")
+    if summary:
+        st.markdown(
+            f"**Sightings:** {summary['sightings']}  ·  "
+            f"**First seen:** {summary['first_seen']}  ·  "
+            f"**Last seen:** {summary['last_seen']}"
+        )
+
+    st.markdown("---")
+    fcol1, fcol2, fcol3 = st.columns(3)
+    with fcol1:
+        nbr_filter = st.multiselect("Restrict neighbor types", types)
+    with fcol2:
+        min_shared = st.number_input("Min shared docs", min_value=1, value=1)
+    with fcol3:
+        limit = st.number_input("Max neighbors", min_value=5, max_value=500, value=50, step=5)
+
+    rows = neighbors(
+        _conn(), etype, evalue,
+        neighbor_types=nbr_filter or None,
+        limit=int(limit),
+        min_shared=int(min_shared),
+    )
+    st.subheader(f"Neighbors ({len(rows)})")
+    if rows:
+        df = pd.DataFrame(rows)[["neighbor_type", "neighbor_value", "shared_docs", "last_seen"]]
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.caption("No neighbors at the current filter / threshold.")
+
+    if rows and st.checkbox("Show graph", value=True):
+        max_nodes = st.slider("Nodes to draw", 5, min(50, len(rows)), value=min(20, len(rows)))
+        dot = build_graphviz(etype, evalue, rows, max_nodes=max_nodes)
+        st.graphviz_chart(dot, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Documents where this entity appears")
+    docs = related_documents(_conn(), etype, evalue, limit=20)
+    if docs:
+        st.dataframe(pd.DataFrame(docs), use_container_width=True)
+    else:
+        st.caption("No documents recorded.")
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
     "Cases": page_cases,
     "Reports": page_reports,
+    "Relationships": page_relationships,
     "Search": page_search,
     "Documents": page_documents,
     "Entities": page_entities,
