@@ -52,3 +52,8 @@ LLM_DOC_TEXT_CHARS = int(os.getenv("LLM_DOC_TEXT_CHARS", "12000"))
 
 # Phase 13 reporting.
 DAILY_REPORT_INTERVAL_HOURS = int(os.getenv("DAILY_REPORT_INTERVAL_HOURS", "0"))
+
+# Phase 14 hardening: auth defaults to OFF for backwards compatibility.
+# Flip AUTH_ENABLED=1 in production (Docker compose sets this for you).
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "0").lower() in ("1", "true", "yes", "on")
+AUTH_ROLES = ("viewer", "analyst", "admin")

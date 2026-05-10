@@ -42,6 +42,9 @@ In scope for Milestone 1:
   `source_health`, `executive`) rendered to markdown / HTML / JSON, with
   a persisted history table, optional scheduler job, and an in-dashboard
   generate-and-browse page.
+- Hardening: opt-in dashboard auth (bcrypt + 3 roles), audit log,
+  backup/restore CLI using SQLite's online backup, and a Docker Compose
+  deployment recipe with web + scheduler services.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -66,6 +69,7 @@ app/
   llm/                          # Claude API summarizer (prompts, schema, runner)
   cases/                        # case repository + markdown exporter
   reports/                      # report templates + renderers (md/html/json)
+  auth/                         # bcrypt users, role checks, audit log, login gate
   entry.py                      # unified entry point used by the .exe build
   alerts/telegram.py
   ui/streamlit_app.py
@@ -152,6 +156,13 @@ python -m app.main report generate executive --window 30d --format html --output
 python -m app.main report generate weekly_watchlist --save
 python -m app.main report list --saved
 python -m app.main report show 1 --format md
+python -m app.main user create alice --role admin     # interactive password prompt
+python -m app.main user list
+python -m app.main user set-role alice analyst
+python -m app.main user disable alice
+python -m app.main backup                              # writes data/backup-<UTC>.db
+python -m app.main backup --output /backups/mtl.db
+python -m app.main restore /backups/mtl.db --force
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -200,6 +211,71 @@ pip install pytest
 pytest -q
 ```
 
+## Production deployment
+
+The repo ships a `Dockerfile` and `docker-compose.yml` that runs two
+services sharing a `data/` volume:
+
+- `web`       — the Streamlit dashboard on port 8501
+- `scheduler` — APScheduler background loop (collect / enrich / source-health / optional daily report)
+
+```bash
+# 1. Configure
+cp .env.example .env
+$EDITOR .env                  # set AUTH_ENABLED=1, your API keys, alert thresholds
+
+# 2. Boot
+docker compose up -d --build
+
+# 3. First-run bootstrap
+open http://localhost:8501    # the gate offers a one-shot admin-creation form
+
+# 4. Backups (run as a cron / systemd timer)
+docker compose exec web python -m app.main backup --output /app/data/backup.db
+```
+
+Behind a reverse proxy (recommended for TLS):
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name intel.example.org;
+    ssl_certificate     /etc/letsencrypt/live/intel.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/intel.example.org/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;     # Streamlit websocket
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### Auth model
+
+- `AUTH_ENABLED=0` (default) → dashboard is open; useful for single-user dev.
+- `AUTH_ENABLED=1` → bcrypt-backed login; first hit shows an admin-creation
+  form when the `users` table is empty.
+- Three roles: `viewer` (read-only), `analyst` (matches/cases/summaries),
+  `admin` (everything, including the Admin page for user management +
+  audit log).
+- All login attempts (success, fail, disabled) and dashboard mutations are
+  written to `audit_log` and are visible on the Admin page.
+
+### Backup / restore
+
+- `python -m app.main backup [--output PATH]` uses SQLite's online backup
+  API, so you can run it against a live database without stopping the
+  scheduler.
+- `python -m app.main restore PATH [--force]` validates the input is a
+  real SQLite file, saves the current DB to `<db>.bak` first, then
+  swaps the file in place.
+
 ## Building a standalone executable
 
 A PyInstaller spec is included so the whole platform can be packaged into
@@ -245,8 +321,9 @@ Frozen runtime behavior:
 ## Status
 
 Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
-search), 11 (LLM analyst summaries), 12 (case management), and 13 (reporting)
-of the larger phased plan. See *Roadmap* for what comes next.
+search), 11 (LLM analyst summaries), 12 (case management), 13 (reporting),
+and 14 (production hardening) of the larger phased plan. See *Roadmap* for
+what comes next.
 
 ## Roadmap
 

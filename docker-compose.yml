@@ -1,0 +1,48 @@
+# Docker Compose deployment for the mini threat-intel platform.
+#
+# Two services share a single `data/` volume holding the SQLite DB:
+#   web        — the Streamlit dashboard (port 8501)
+#   scheduler  — APScheduler background loop (collect / enrich / source-health)
+#
+# First-run flow:
+#   1. cp .env.example .env  &&  edit secrets (set AUTH_ENABLED=1)
+#   2. docker compose up -d --build
+#   3. open http://localhost:8501  → bootstrap form creates the first admin
+#
+# Backups:
+#   docker compose exec web python -m app.main backup --output /app/data/backup.db
+
+services:
+  web:
+    build: .
+    image: mini-threat-intel
+    container_name: threatintel-web
+    env_file: .env
+    environment:
+      AUTH_ENABLED: "1"
+      DATABASE_PATH: /app/data/threatintel.db
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./sources.yaml:/app/sources.yaml:ro
+      - ./watchlist.yaml:/app/watchlist.yaml:ro
+      - ./suppression.yaml:/app/suppression.yaml:ro
+    restart: unless-stopped
+
+  scheduler:
+    image: mini-threat-intel
+    container_name: threatintel-scheduler
+    env_file: .env
+    environment:
+      AUTH_ENABLED: "1"
+      DATABASE_PATH: /app/data/threatintel.db
+    volumes:
+      - ./data:/app/data
+      - ./sources.yaml:/app/sources.yaml:ro
+      - ./watchlist.yaml:/app/watchlist.yaml:ro
+      - ./suppression.yaml:/app/suppression.yaml:ro
+    command: ["python", "-m", "app.main", "scheduler"]
+    depends_on:
+      - web
+    restart: unless-stopped

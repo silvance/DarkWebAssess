@@ -401,6 +401,219 @@ def cmd_reindex(_args):
     print(f"FTS index rebuilt over {n} documents.")
 
 
+# --- user management subcommand ------------------------------------------
+def _build_user_parser(sub):
+    pu = sub.add_parser("user", help="Manage dashboard users (auth).")
+    us = pu.add_subparsers(dest="user_command", required=True)
+
+    uc = us.add_parser("create", help="Create a new user.")
+    uc.add_argument("username")
+    uc.add_argument("--role", default="analyst", choices=["viewer", "analyst", "admin"])
+    uc.add_argument("--full-name")
+    uc.add_argument("--password", help="Set the password (otherwise prompted).")
+    uc.set_defaults(func=cmd_user_create)
+
+    us.add_parser("list", help="List users.").set_defaults(func=cmd_user_list)
+
+    usp = us.add_parser("set-password", help="Reset a user's password.")
+    usp.add_argument("username")
+    usp.add_argument("--password", help="Set the password (otherwise prompted).")
+    usp.set_defaults(func=cmd_user_set_password)
+
+    usr = us.add_parser("set-role", help="Change a user's role.")
+    usr.add_argument("username")
+    usr.add_argument("role", choices=["viewer", "analyst", "admin"])
+    usr.set_defaults(func=cmd_user_set_role)
+
+    use = us.add_parser("disable", help="Disable a user.")
+    use.add_argument("username")
+    use.set_defaults(func=cmd_user_disable)
+
+    uen = us.add_parser("enable", help="Re-enable a user.")
+    uen.add_argument("username")
+    uen.set_defaults(func=cmd_user_enable)
+
+    udel = us.add_parser("delete", help="Delete a user.")
+    udel.add_argument("username")
+    udel.set_defaults(func=cmd_user_delete)
+
+
+def _prompt_password(arg_value):
+    if arg_value:
+        return arg_value
+    import getpass
+    p1 = getpass.getpass("Password: ")
+    p2 = getpass.getpass("Confirm:  ")
+    if p1 != p2:
+        print("Passwords do not match.")
+        sys.exit(1)
+    if len(p1) < 8:
+        print("Password must be at least 8 characters.")
+        sys.exit(1)
+    return p1
+
+
+def cmd_user_create(args):
+    from app.auth.users import create_user
+
+    password = _prompt_password(args.password)
+    with db_cursor() as conn:
+        try:
+            uid = create_user(conn, args.username, password,
+                              role=args.role, full_name=args.full_name, actor="cli")
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            sys.exit(1)
+    print(f"Created user #{uid} ({args.username}, role={args.role})")
+
+
+def cmd_user_list(_args):
+    from app.auth.users import list_users
+
+    with db_cursor() as conn:
+        users = list_users(conn)
+    if not users:
+        print("No users.")
+        return
+    for u in users:
+        flag = "" if u["enabled"] else " (disabled)"
+        last = u["last_login_at"] or "—"
+        print(f"  {u['username']:<20} {u['role']:<8} last_login={last}{flag}")
+
+
+def cmd_user_set_password(args):
+    from app.auth.users import set_password
+
+    password = _prompt_password(args.password)
+    with db_cursor() as conn:
+        if not set_password(conn, args.username, password, actor="cli"):
+            print(f"User {args.username!r} not found.")
+            sys.exit(1)
+    print(f"Password updated for {args.username}.")
+
+
+def cmd_user_set_role(args):
+    from app.auth.users import set_role
+
+    with db_cursor() as conn:
+        if not set_role(conn, args.username, args.role, actor="cli"):
+            print(f"User {args.username!r} not found.")
+            sys.exit(1)
+    print(f"Role for {args.username} → {args.role}")
+
+
+def cmd_user_disable(args):
+    from app.auth.users import set_enabled
+
+    with db_cursor() as conn:
+        if not set_enabled(conn, args.username, False, actor="cli"):
+            print(f"User {args.username!r} not found.")
+            sys.exit(1)
+    print(f"Disabled {args.username}.")
+
+
+def cmd_user_enable(args):
+    from app.auth.users import set_enabled
+
+    with db_cursor() as conn:
+        if not set_enabled(conn, args.username, True, actor="cli"):
+            print(f"User {args.username!r} not found.")
+            sys.exit(1)
+    print(f"Enabled {args.username}.")
+
+
+def cmd_user_delete(args):
+    from app.auth.users import delete_user
+
+    with db_cursor() as conn:
+        if not delete_user(conn, args.username, actor="cli"):
+            print(f"User {args.username!r} not found.")
+            sys.exit(1)
+    print(f"Deleted {args.username}.")
+
+
+# --- backup / restore subcommands ----------------------------------------
+def _build_backup_parser(sub):
+    pb = sub.add_parser("backup", help="Online-backup the SQLite DB to a file.")
+    pb.add_argument("--output", help="Destination path. Defaults to data/backup-<UTC>.db")
+    pb.set_defaults(func=cmd_backup)
+
+    pr = sub.add_parser("restore", help="Restore the SQLite DB from a backup file.")
+    pr.add_argument("input", help="Path to a previously-created backup .db.")
+    pr.add_argument("--force", action="store_true",
+                    help="Replace the current DB without confirmation.")
+    pr.set_defaults(func=cmd_restore)
+
+
+def cmd_backup(args):
+    import sqlite3
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from app.auth.audit import record_audit
+    from app.config import DATABASE_PATH
+
+    output = args.output
+    if not output:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        output = str(Path(DATABASE_PATH).parent / f"backup-{ts}.db")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+
+    src = sqlite3.connect(DATABASE_PATH)
+    dst = sqlite3.connect(output)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+
+    with db_cursor() as conn:
+        record_audit(conn, action="db_backup", actor="cli",
+                     payload={"output": output})
+    print(f"Wrote backup → {output}")
+
+
+def cmd_restore(args):
+    import shutil
+    import sqlite3
+    from pathlib import Path
+    from app.auth.audit import record_audit
+    from app.config import DATABASE_PATH
+
+    src_path = Path(args.input)
+    if not src_path.exists():
+        print(f"Backup file not found: {src_path}")
+        sys.exit(1)
+    # Validate the input file is a real SQLite DB before clobbering anything.
+    try:
+        probe = sqlite3.connect(str(src_path))
+        probe.execute("PRAGMA schema_version").fetchone()
+        probe.close()
+    except sqlite3.DatabaseError as exc:
+        print(f"Refusing to restore: {src_path} is not a valid SQLite file ({exc}).")
+        sys.exit(1)
+
+    dst_path = Path(DATABASE_PATH)
+    if dst_path.exists() and not args.force:
+        print(
+            f"{dst_path} already exists. Re-run with --force to overwrite "
+            f"(a sidecar copy will be saved to {dst_path}.bak first)."
+        )
+        sys.exit(1)
+
+    if dst_path.exists():
+        sidecar = Path(str(dst_path) + ".bak")
+        shutil.copy2(dst_path, sidecar)
+        print(f"Saved current DB → {sidecar}")
+    shutil.copy2(src_path, dst_path)
+
+    # Record AFTER the swap, with the freshly-restored DB.
+    with db_cursor() as conn:
+        record_audit(conn, action="db_restore", actor="cli",
+                     payload={"input": str(src_path)})
+    print(f"Restored {dst_path} from {src_path}.")
+
+
 # --- report subcommand ---------------------------------------------------
 def _build_report_parser(sub):
     pr = sub.add_parser("report", help="Generate and manage reports.")
@@ -784,6 +997,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_case_parser(sub)
     _build_report_parser(sub)
+    _build_user_parser(sub)
+    _build_backup_parser(sub)
 
     pz = sub.add_parser("summarize", help="Generate analyst summaries via the Claude API.")
     grp = pz.add_mutually_exclusive_group()

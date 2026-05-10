@@ -3,6 +3,7 @@
 Run with:
     streamlit run app/ui/streamlit_app.py
 """
+import os
 import sys
 from pathlib import Path
 
@@ -14,9 +15,21 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.auth.middleware import gate, logout, require_role  # noqa: E402
 from app.database import get_connection, init_db  # noqa: E402
 
 st.set_page_config(page_title="Mini Threat Intel", layout="wide")
+
+# Block until logged in (no-op when AUTH_ENABLED=0).
+_user = gate()
+if _user:
+    with st.sidebar:
+        if _user.get("auth_disabled"):
+            st.caption("Auth disabled (set `AUTH_ENABLED=1` to enable).")
+        else:
+            st.caption(f"Signed in as **{_user['username']}** ({_user['role']})")
+            if st.button("Sign out"):
+                logout()
 
 
 @st.cache_resource
@@ -670,6 +683,104 @@ def page_reports():
                 st.code(row["body_json"], language="json")
 
 
+def page_admin():
+    """Admin-only: user management + audit log + provider key presence."""
+    require_role(_user, "admin")
+    from app.auth.audit import list_audit
+    from app.auth.users import (
+        create_user, delete_user, list_users, set_enabled,
+        set_password, set_role,
+    )
+    from app.config import AUTH_ROLES
+
+    st.title("Admin")
+    actor = (_user or {}).get("username")
+
+    st.subheader("Users")
+    users = pd.DataFrame(list_users(_conn()))
+    if not users.empty:
+        st.dataframe(users, use_container_width=True)
+    else:
+        st.caption("No users yet.")
+
+    with st.expander("Create user"):
+        with st.form("add_user"):
+            u_name = st.text_input("Username")
+            u_full = st.text_input("Full name (optional)")
+            u_role = st.selectbox("Role", list(AUTH_ROLES), index=1)
+            u_pw = st.text_input("Password", type="password")
+            if st.form_submit_button("Create") and u_name and u_pw:
+                try:
+                    with _conn() as conn:
+                        create_user(conn, u_name, u_pw, role=u_role,
+                                    full_name=u_full or None, actor=actor)
+                        conn.commit()
+                    st.success(f"Created {u_name}.")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+
+    if not users.empty:
+        with st.expander("Modify user"):
+            target = st.selectbox("User", list(users["username"]))
+            new_role = st.selectbox("Role", list(AUTH_ROLES), key="modify_role")
+            colA, colB, colC, colD = st.columns(4)
+            with colA:
+                if st.button("Set role"):
+                    with _conn() as conn:
+                        set_role(conn, target, new_role, actor=actor)
+                        conn.commit()
+                    st.success("Role updated.")
+                    st.rerun()
+            with colB:
+                if st.button("Disable"):
+                    with _conn() as conn:
+                        set_enabled(conn, target, False, actor=actor)
+                        conn.commit()
+                    st.rerun()
+            with colC:
+                if st.button("Enable"):
+                    with _conn() as conn:
+                        set_enabled(conn, target, True, actor=actor)
+                        conn.commit()
+                    st.rerun()
+            with colD:
+                if st.button("Delete"):
+                    with _conn() as conn:
+                        delete_user(conn, target, actor=actor)
+                        conn.commit()
+                    st.rerun()
+
+            new_pw = st.text_input("Reset password", type="password", key="reset_pw")
+            if st.button("Set password") and new_pw:
+                with _conn() as conn:
+                    set_password(conn, target, new_pw, actor=actor)
+                    conn.commit()
+                st.success("Password updated.")
+
+    st.markdown("---")
+    st.subheader("Provider keys (presence only)")
+    key_status = []
+    for env_var in [
+        "ANTHROPIC_API_KEY",
+        "VIRUSTOTAL_API_KEY",
+        "ABUSEIPDB_API_KEY",
+        "ABUSECH_AUTH_KEY",
+        "TELEGRAM_BOT_TOKEN",
+    ]:
+        key_status.append({"env_var": env_var, "set": bool(os.getenv(env_var))})
+    st.dataframe(pd.DataFrame(key_status), use_container_width=True)
+    st.caption("Values are never displayed in the dashboard.")
+
+    st.markdown("---")
+    st.subheader("Recent audit log")
+    audit_rows = list_audit(_conn(), limit=200)
+    if audit_rows:
+        st.dataframe(pd.DataFrame(audit_rows), use_container_width=True)
+    else:
+        st.caption("No audit entries yet.")
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
@@ -681,6 +792,7 @@ PAGES = {
     "Enrichment": page_enrichment,
     "Sources": page_sources,
     "Jobs": page_jobs,
+    "Admin": page_admin,
 }
 
 choice = st.sidebar.radio("Page", list(PAGES.keys()))
