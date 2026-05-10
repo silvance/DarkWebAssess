@@ -153,6 +153,9 @@ def extract_domains(text: str) -> List[dict]:
         tld = candidate.rsplit(".", 1)[-1]
         if tld in _BAD_DOMAIN_TLDS:
             continue
+        if candidate.endswith(".onion"):
+            # .onion hostnames are emitted by the onion extractor.
+            continue
         if candidate in seen:
             continue
         seen.add(candidate)
@@ -167,7 +170,11 @@ def extract_domains(text: str) -> List[dict]:
 
 
 def extract_hashes(text: str) -> List[dict]:
-    """Extract MD5, SHA1, SHA256 in that order, longest first to avoid overlap."""
+    """Extract MD5, SHA1, SHA256 in that order, longest first to avoid overlap.
+
+    SHA1 candidates immediately preceded by `0x` are skipped — those are
+    Ethereum addresses, handled by the wallet extractor.
+    """
     out = []
     consumed = []  # list of (start, end) of already-claimed hash positions
     for entity_type, regex in (
@@ -177,6 +184,8 @@ def extract_hashes(text: str) -> List[dict]:
     ):
         for m in regex.finditer(text):
             if any(s <= m.start() < e for s, e in consumed):
+                continue
+            if entity_type == "sha1" and m.start() >= 2 and text[m.start() - 2 : m.start()].lower() == "0x":
                 continue
             consumed.append((m.start(), m.end()))
             out.append(
@@ -196,15 +205,25 @@ def extract_cves(text: str) -> List[dict]:
 def extract_all(text: str) -> List[dict]:
     if not text:
         return []
+    # Lazy imports avoid a circular path during early app startup.
+    from app.extractors.handles import extract_handles
+    from app.extractors.named_entities import extract_named_entities
+    from app.extractors.onion import extract_onions
+    from app.extractors.wallets import extract_wallets
+
     cleaned = refang(text)
     results = []
     results.extend(extract_urls(cleaned))
     results.extend(extract_emails(cleaned))
     results.extend(extract_ipv4(cleaned))
     results.extend(extract_ipv6(cleaned))
+    results.extend(extract_onions(cleaned))
     results.extend(extract_domains(cleaned))
+    results.extend(extract_wallets(cleaned))
     results.extend(extract_hashes(cleaned))
     results.extend(extract_cves(cleaned))
+    results.extend(extract_handles(cleaned))
+    results.extend(extract_named_entities(cleaned))
 
     # De-dupe on (type, value), keep first context.
     seen = set()

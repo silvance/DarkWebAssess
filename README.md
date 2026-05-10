@@ -13,9 +13,12 @@ In scope for Milestone 1:
 - SQLite storage
 - Regex-based observable extraction (domain, URL, email, IPv4/IPv6, MD5,
   SHA1, SHA256, CVE)
+- Phase 2 observables: onion (v2/v3), crypto wallets (BTC base58/bech32,
+  ETH, Monero), `@handles`, malware/threat-actor names via curated lookup
+  list (`app/extractors/named_entities.yaml`)
 - Defanged-input handling (`evil[.]example[.]com`, `hxxps://`, `[at]`)
 - Watchlist matching: exact domain (with subdomain match), email, IP, CVE,
-  hash, free-text keyword
+  hash, onion, wallet, handle, malware, actor, free-text keyword
 - Streamlit dashboard: overview, matches, documents, entities, source health
 - Telegram alerts for high/critical matches
 
@@ -27,7 +30,12 @@ enrichment APIs, scoring, LLM summaries, case management, authentication.
 ```
 app/
   collectors/rss_collector.py
-  extractors/entities.py
+  extractors/entities.py        # orchestrator + domain/url/email/ip/hash/cve
+  extractors/onion.py           # .onion v2/v3
+  extractors/wallets.py         # BTC/ETH/XMR
+  extractors/handles.py         # @username
+  extractors/named_entities.py  # malware + actor lookup
+  extractors/named_entities.yaml
   matching/watchlist_matcher.py
   alerts/telegram.py
   ui/streamlit_app.py
@@ -75,7 +83,8 @@ python -m app.main alert-test     # send a test Telegram alert
 `sources.yaml` lists RSS feeds with `name`, `type: rss`, `url`, `enabled`.
 
 `watchlist.yaml` lists watched entries with `type`
-(`domain`, `email`, `ip`, `cve`, `hash`, `keyword`), `value`, `severity`
+(`domain`, `email`, `ip`, `cve`, `hash`, `onion`, `wallet`, `handle`,
+`malware`, `actor`, `keyword`), `value`, `severity`
 (`low`/`medium`/`high`/`critical`), `description`, `enabled`.
 
 Environment variables (see `.env.example`):
@@ -94,7 +103,7 @@ pytest -q
 
 ## Status
 
-Milestone 1 of the larger phased plan. See *Roadmap* for what comes next.
+Milestones 1 and 2 of the larger phased plan. See *Roadmap* for what comes next.
 
 ## Roadmap
 

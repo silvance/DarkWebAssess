@@ -40,3 +40,33 @@ watchlist:
     description: Zero-day mentions
     severity: medium
     enabled: true
+
+  - type: malware
+    value: LockBit
+    description: LockBit ransomware family
+    severity: high
+    enabled: true
+
+  - type: actor
+    value: Volt Typhoon
+    description: PRC-aligned APT group
+    severity: critical
+    enabled: true
+
+  - type: onion
+    value: exampleexampleexampleexampleexampleexampleexampleexample00.onion
+    description: Example v3 onion (placeholder)
+    severity: high
+    enabled: false
+
+  - type: wallet
+    value: bc1qexamplewalletaddressxxxxxxxxxxxxxxxxxxxxxx
+    description: Example BTC bech32 wallet (placeholder)
+    severity: medium
+    enabled: false
+
+  - type: handle
+    value: "@example_actor"
+    description: Example threat-actor handle (placeholder)
+    severity: medium
+    enabled: false
