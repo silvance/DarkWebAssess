@@ -597,10 +597,84 @@ def page_cases():
         st.markdown(f"- `{ev['created_at']}` **{ev['event_type']}** by {ev['actor'] or 'system'} {bits}")
 
 
+def page_reports():
+    from app.reports.renderers import render_html, render_markdown
+    from app.reports.runner import (
+        generate_report,
+        get_saved,
+        list_saved,
+        list_templates,
+        save_report,
+    )
+
+    st.title("Reports")
+
+    st.subheader("Generate")
+    templates = list_templates()
+    template_names = [t[0] for t in templates]
+    description_map = dict(templates)
+    with st.form("gen_report"):
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+        with col1:
+            chosen = st.selectbox("Template", template_names)
+        with col2:
+            window = st.text_input("Window", value="24h",
+                                   help="e.g. 24h, 7d, 30d. Leave blank for all time.")
+        with col3:
+            fmt = st.selectbox("Format", ["markdown", "html", "json"])
+        with col4:
+            save = st.checkbox("Save to history", value=True)
+        gen = st.form_submit_button("Generate")
+    if chosen:
+        st.caption(description_map.get(chosen, ""))
+    if gen:
+        with _conn() as conn:
+            report = generate_report(conn, chosen, window=window or None)
+            if save:
+                save_report(conn, report)
+        if fmt == "markdown":
+            md = render_markdown(report)
+            st.markdown(md)
+            st.download_button("Download .md", md.encode("utf-8"),
+                               file_name=f"{chosen}.md", mime="text/markdown")
+        elif fmt == "html":
+            html_body = render_html(report)
+            st.components.v1.html(html_body, height=600, scrolling=True)
+            st.download_button("Download .html", html_body.encode("utf-8"),
+                               file_name=f"{chosen}.html", mime="text/html")
+        else:
+            import json as _json
+            st.code(_json.dumps(report.to_dict(), indent=2, default=str), language="json")
+
+    st.markdown("---")
+    st.subheader("History")
+    saved = _query(
+        "SELECT id, name, title, generated_at, window_start, window_end "
+        "FROM reports ORDER BY generated_at DESC LIMIT 100"
+    )
+    st.dataframe(saved, use_container_width=True)
+    if not saved.empty:
+        rid = st.number_input("Report ID", min_value=int(saved["id"].min()),
+                              max_value=int(saved["id"].max()), step=1)
+        view_fmt = st.selectbox("View as", ["markdown", "html", "json"], key="view_saved_fmt")
+        if st.button("Open"):
+            with _conn() as conn:
+                row = get_saved(conn, int(rid))
+            if not row:
+                st.error("Not found.")
+            elif view_fmt == "markdown":
+                st.markdown(row["body_markdown"])
+            elif view_fmt == "html":
+                st.components.v1.html(row["body_html"], height=600, scrolling=True)
+            else:
+                st.code(row["body_json"], language="json")
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
     "Cases": page_cases,
+    "Reports": page_reports,
     "Search": page_search,
     "Documents": page_documents,
     "Entities": page_entities,

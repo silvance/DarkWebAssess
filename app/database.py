@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
 CREATE INDEX IF NOT EXISTS idx_matches_severity ON matches(severity);
-CREATE INDEX IF NOT EXISTS idx_matches_score ON matches(score);
+-- idx_matches_score is created in _migrate() so legacy DBs that pre-date the
+-- score column don't trip on executescript() before _migrate runs.
 
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,6 +187,21 @@ CREATE TABLE IF NOT EXISTS case_events (
     FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_case_events_case ON case_events(case_id, created_at);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    title TEXT,
+    generated_at TEXT NOT NULL,
+    window_start TEXT,
+    window_end TEXT,
+    body_markdown TEXT,
+    body_html TEXT,
+    body_json TEXT,
+    metadata_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reports_name ON reports(name);
+CREATE INDEX IF NOT EXISTS idx_reports_generated ON reports(generated_at);
 """
 
 FTS_SCHEMA = """

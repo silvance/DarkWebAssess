@@ -38,6 +38,10 @@ In scope for Milestone 1:
   (matches / documents / entities / enrichments / summaries / free-form
   notes), capture a status timeline, export a self-contained markdown
   report.
+- Reports: rule-based templates (`daily_summary`, `weekly_watchlist`,
+  `source_health`, `executive`) rendered to markdown / HTML / JSON, with
+  a persisted history table, optional scheduler job, and an in-dashboard
+  generate-and-browse page.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -61,6 +65,8 @@ app/
   search.py                     # FTS5 query helpers
   llm/                          # Claude API summarizer (prompts, schema, runner)
   cases/                        # case repository + markdown exporter
+  reports/                      # report templates + renderers (md/html/json)
+  entry.py                      # unified entry point used by the .exe build
   alerts/telegram.py
   ui/streamlit_app.py
   config.py
@@ -140,6 +146,12 @@ python -m app.main case note 1 --body "Looks tied to recent leak claim"
 python -m app.main case attach 1 --enrichment 7
 python -m app.main case status 1 --to confirmed
 python -m app.main case export 1 --output report.md
+python -m app.main report list
+python -m app.main report generate daily_summary --window 24h --format md
+python -m app.main report generate executive --window 30d --format html --output exec.html
+python -m app.main report generate weekly_watchlist --save
+python -m app.main report list --saved
+python -m app.main report show 1 --format md
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -178,6 +190,8 @@ Environment variables (see `.env.example`):
 - `ANTHROPIC_API_KEY` — required for `summarize`; provider self-skips otherwise
 - `LLM_MODEL` (default `claude-opus-4-7`), `LLM_MAX_TOKENS` (2048),
   `LLM_DOC_TEXT_CHARS` (12000) — knobs for analyst summarization
+- `DAILY_REPORT_INTERVAL_HOURS` — when > 0, the scheduler also generates
+  + persists a `daily_summary` report on this cadence (default 0 = off)
 
 ## Tests
 
@@ -186,11 +200,53 @@ pip install pytest
 pytest -q
 ```
 
+## Building a standalone executable
+
+A PyInstaller spec is included so the whole platform can be packaged into
+a single self-contained `.exe` (Windows) or binary (macOS/Linux). The
+build is a "onedir" bundle — `dist/mini-threat-intel/` contains the
+executable plus the supporting libs and bundled YAML configs.
+
+```bash
+# 1. Install build deps (adds PyInstaller on top of the runtime requirements)
+pip install -r requirements-build.txt
+
+# 2. Build
+python scripts/build_exe.py
+# or: python -m PyInstaller --clean --noconfirm mini-threat-intel.spec
+
+# 3. Ship dist/mini-threat-intel/ as a zip
+```
+
+The frozen executable accepts the same subcommands as the CLI:
+
+```bash
+mini-threat-intel.exe                       # launch the dashboard (default)
+mini-threat-intel.exe dashboard
+mini-threat-intel.exe collect
+mini-threat-intel.exe scheduler
+mini-threat-intel.exe report generate daily_summary --window 24h
+```
+
+Frozen runtime behavior:
+
+- `app/entry.py` is the single entry point; it dispatches to either the
+  Streamlit dashboard or `app.main` based on the first argument.
+- Bundled YAML configs are unpacked from `sys._MEIPASS`; their paths are
+  exposed via `SOURCES_PATH`, `WATCHLIST_PATH`, `SUPPRESSION_PATH` env
+  vars so the rest of the code is unaware of the difference.
+- The SQLite DB defaults to `./data/threatintel.db` next to the
+  executable, so users can run the bundle from any writable directory
+  without admin rights. Override with `DATABASE_PATH=…`.
+- `launch.py` / `run.sh` / `run.bat` are dev-only — they pull source +
+  install deps + invoke `python -m app.main`. End users of the .exe never
+  see them.
+
 ## Status
 
 Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
-search), 11 (LLM analyst summaries), and 12 (case management) of the larger
-phased plan. See *Roadmap* for what comes next.
+search), 11 (LLM analyst summaries), 12 (case management), and 13 (reporting)
+of the larger phased plan. See *Roadmap* for what comes next.
 
 ## Roadmap
 

@@ -66,6 +66,11 @@ def check_python() -> None:
         )
 
 
+def is_frozen() -> bool:
+    """True when running inside a PyInstaller-built executable."""
+    return getattr(sys, "frozen", False)
+
+
 def venv_python() -> Path:
     if os.name == "nt":
         return VENV / "Scripts" / "python.exe"
@@ -237,13 +242,17 @@ def main(argv=None) -> None:
     check_python()
     info(f"Working directory: {ROOT}")
 
-    if not args.no_pull:
+    frozen = is_frozen()
+    if frozen:
+        info("Running inside a frozen build — skipping git pull and dependency install.")
+
+    if not args.no_pull and not frozen:
         git_pull()
 
-    ensure_venv(args.python)
-
-    if not args.no_install:
-        install_requirements(force=args.reinstall)
+    if not frozen:
+        ensure_venv(args.python)
+        if not args.no_install:
+            install_requirements(force=args.reinstall)
 
     maybe_init_db(args.no_init)
 

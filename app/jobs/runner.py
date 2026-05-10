@@ -81,6 +81,16 @@ def job_enrich():
     return run_enrichment_cycle(limit=ENRICH_BATCH_LIMIT)
 
 
+def job_daily_report():
+    """Generate and persist the daily_summary report."""
+    from app.reports.runner import generate_report, save_report
+
+    with db_cursor() as conn:
+        report = generate_report(conn, "daily_summary", window="24h")
+        save_report(conn, report)
+    return {"name": "daily_summary"}
+
+
 def job_source_health():
     """HEAD each enabled source URL and update its health row.
 

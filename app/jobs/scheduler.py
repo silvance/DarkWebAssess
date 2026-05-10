@@ -13,10 +13,17 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import (
     COLLECT_INTERVAL_MINUTES,
+    DAILY_REPORT_INTERVAL_HOURS,
     ENRICH_INTERVAL_MINUTES,
     SOURCE_HEALTH_INTERVAL_HOURS,
 )
-from app.jobs.runner import job_collect, job_enrich, job_source_health, record_run
+from app.jobs.runner import (
+    job_collect,
+    job_daily_report,
+    job_enrich,
+    job_source_health,
+    record_run,
+)
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +64,15 @@ def build_scheduler() -> BlockingScheduler:
         max_instances=1,
         coalesce=True,
     )
+    if DAILY_REPORT_INTERVAL_HOURS > 0:
+        sched.add_job(
+            _wrap("daily_report", job_daily_report),
+            IntervalTrigger(hours=DAILY_REPORT_INTERVAL_HOURS),
+            id="daily_report",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     return sched
 
 
