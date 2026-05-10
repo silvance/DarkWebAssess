@@ -53,6 +53,17 @@ LLM_DOC_TEXT_CHARS = int(os.getenv("LLM_DOC_TEXT_CHARS", "12000"))
 # Phase 13 reporting.
 DAILY_REPORT_INTERVAL_HOURS = int(os.getenv("DAILY_REPORT_INTERVAL_HOURS", "0"))
 
+# Phase 1 — Tor / onion collection.
+TOR_SOCKS_HOST = os.getenv("TOR_SOCKS_HOST", "127.0.0.1")
+TOR_SOCKS_PORT = int(os.getenv("TOR_SOCKS_PORT", "9050"))
+ONION_REQUEST_TIMEOUT = int(os.getenv("ONION_REQUEST_TIMEOUT", "60"))
+# Onion sites should not see the same UA as our clearweb fetcher; default to a
+# generic browser-ish string. Operators can override.
+ONION_USER_AGENT = os.getenv(
+    "ONION_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; rv:115.0) Gecko/20100101 Firefox/115.0",
+)
+
 # Phase 14 hardening: auth defaults to OFF for backwards compatibility.
 # Flip AUTH_ENABLED=1 in production (Docker compose sets this for you).
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "0").lower() in ("1", "true", "yes", "on")

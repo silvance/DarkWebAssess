@@ -48,6 +48,9 @@ In scope for Milestone 1:
 - Relationship mapping: pivot from any extracted entity to its
   co-occurring neighbors (ranked by shared documents) with a Graphviz
   mini-graph in the dashboard and a `pivot` CLI command.
+- Optional Tor / onion collector: routes through a local SOCKS5h proxy,
+  fetches only the `*.onion` URLs you explicitly configure (no crawling),
+  with a Compose-profile sidecar and a `tor-check` smoke-test command.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -171,6 +174,7 @@ python -m app.main backup --output /backups/mtl.db
 python -m app.main restore /backups/mtl.db --force
 python -m app.main pivot domain:example.com            # relationship pivot from CLI
 python -m app.main pivot cve:CVE-2024-3400 --neighbor-type domain --limit 10
+python -m app.main tor-check                           # smoke-test Tor SOCKS proxy
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -218,6 +222,75 @@ Environment variables (see `.env.example`):
 pip install pytest
 pytest -q
 ```
+
+## Dark-web sources (Tor)
+
+The platform can also collect from public Tor hidden services
+(`*.onion`). Onion sources are **disabled by default** and routed through
+a local Tor SOCKS5 proxy using `socks5h://` so DNS resolution happens at
+the Tor exit (a `socks5://` proxy without the `h` would resolve hostnames
+locally and leak which onion you're visiting).
+
+### Setting it up
+
+1. **Run a Tor daemon.** Either install locally:
+
+   ```bash
+   # Debian/Ubuntu
+   sudo apt install tor && sudo systemctl start tor
+   # macOS
+   brew install tor && brew services start tor
+   ```
+
+   …or use the Compose sidecar (gated on a profile so it doesn't pull the
+   image for clearweb-only deployments):
+
+   ```bash
+   docker compose --profile tor up -d
+   # then in .env:
+   #   TOR_SOCKS_HOST=tor
+   #   TOR_SOCKS_PORT=9050
+   ```
+
+2. **Validate connectivity.**
+
+   ```bash
+   python -m app.main tor-check
+   ```
+
+   Should print `OK: traffic is routed through Tor.` If not, the error message
+   tells you whether the proxy is unreachable or returning unexpected content.
+
+3. **Add onion entries to `sources.yaml`.** The shipped file has a disabled
+   placeholder showing the expected shape. The Pydantic config refuses
+   `type: onion` with a clearweb URL and `type: rss` with an `.onion` URL,
+   so a misconfiguration fails on `sync-config` rather than at runtime.
+
+4. **Run a cycle.**
+
+   ```bash
+   python -m app.main collect --only "Your Onion Source"
+   ```
+
+### What stays in scope
+
+The original project plan drew a clear line that this collector keeps:
+
+- **In scope** — your organization's own leak-site monitoring, public
+  ransomware index mirrors, public news mirrors, and any source you have a
+  documented authority to fetch.
+- **Out of scope** — invite-only criminal forums, buying stolen data,
+  interacting with threat actors, automated account creation, exploit
+  execution, malware detonation, credential validation. The collector
+  **never crawls or auto-discovers** — it only fetches the URLs you put
+  in `sources.yaml`.
+
+### Knobs
+
+- `TOR_SOCKS_HOST` (default `127.0.0.1`)
+- `TOR_SOCKS_PORT` (default `9050`)
+- `ONION_REQUEST_TIMEOUT` (default `60` seconds — Tor is slow)
+- `ONION_USER_AGENT` (default a generic Firefox UA)
 
 ## Production deployment
 

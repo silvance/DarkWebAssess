@@ -28,3 +28,22 @@ sources:
     type: rss
     url: https://isc.sans.edu/rssfeed.xml
     enabled: true
+
+  # ----------------------------------------------------------------------
+  # Onion (Tor hidden service) sources — disabled by default.
+  #
+  # Read the README's "Dark-web sources" section before enabling any of
+  # these. In short:
+  #   1. Run a Tor daemon (locally or via `docker compose --profile tor up`).
+  #   2. Validate connectivity: `python -m app.main tor-check`.
+  #   3. Replace the placeholder URLs with sources you have a clear
+  #      authority and lawful basis to monitor (your org's own leak-site
+  #      monitoring, public news mirrors, public threat-intel mirrors —
+  #      NOT invite-only forums, paid data, or anything you'd be uncomfortable
+  #      explaining in a deposition).
+  #   4. Flip `enabled: true` only when you've done both 1-3.
+  - name: Example onion source
+    type: onion
+    # URL must be a *.onion v2 (16-char) or v3 (56-char) hostname.
+    url: http://exampleexampleexampleexampleexampleexampleexampleexample00.onion/
+    enabled: false

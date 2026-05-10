@@ -14,6 +14,7 @@ from app.cli import (
     cmd_score,
     cmd_search,
     cmd_summarize,
+    cmd_tor,
     cmd_users,
 )
 from app.database import init_db
@@ -62,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_users.register(sub)
     cmd_backup.register(sub)
     cmd_pivot.register(sub)
+    cmd_tor.register(sub)
 
     return p
 

@@ -95,25 +95,36 @@ def job_source_health():
 
     A successful HEAD just records last_checked_at; a failure increments
     error_count and triggers backoff. We don't try to actually parse the
-    feed here — that's the collector's job.
-    """
+    feed here — that's the collector's job. Onion sources are HEAD-checked
+    over the Tor SOCKS proxy so we never accidentally probe a .onion via
+    the clearweb."""
+    from app.collectors.onion_collector import build_tor_session
+    from app.config import ONION_REQUEST_TIMEOUT
     from app.config_models import load_sources
 
     cfg = load_sources(SOURCES_PATH)
-    headers = {"User-Agent": USER_AGENT}
     counts = {"ok": 0, "errors": 0}
     with db_cursor() as conn:
         for src in cfg.sources:
             if not src.enabled:
                 continue
             try:
-                resp = requests.head(
-                    src.url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True
+                if src.type == "onion":
+                    session = build_tor_session()
+                    timeout = ONION_REQUEST_TIMEOUT
+                else:
+                    session = requests
+                    timeout = HTTP_TIMEOUT
+                headers = {"User-Agent": USER_AGENT} if src.type != "onion" else None
+                resp = session.head(
+                    src.url, headers=headers, timeout=timeout, allow_redirects=True,
                 )
-                # Some servers reject HEAD; fall back to a light GET on 4xx.
+                # Some servers reject HEAD; fall back to a light GET on 4xx
+                # (other than 405 Method Not Allowed which means HEAD itself
+                # was rejected and there's no point retrying with it).
                 if resp.status_code >= 400 and resp.status_code != 405:
-                    resp = requests.get(
-                        src.url, headers=headers, timeout=HTTP_TIMEOUT, stream=True
+                    resp = session.get(
+                        src.url, headers=headers, timeout=timeout, stream=True,
                     )
                 resp.raise_for_status()
                 mark_source_success(conn, src.name)

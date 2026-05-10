@@ -11,6 +11,12 @@
 #
 # Backups:
 #   docker compose exec web python -m app.main backup --output /app/data/backup.db
+#
+# Dark-web (Tor) sources — opt-in:
+#   The `tor` service below is gated on the `tor` profile so it doesn't pull
+#   the Tor image for clearweb-only deployments. Enable it with:
+#     docker compose --profile tor up -d
+#   then set TOR_SOCKS_HOST=tor in .env.
 
 services:
   web:
@@ -46,3 +52,21 @@ services:
     depends_on:
       - web
     restart: unless-stopped
+
+  # --- Optional Tor SOCKS proxy --------------------------------------------
+  # Enabled via: `docker compose --profile tor up -d`
+  # When this is up, set TOR_SOCKS_HOST=tor (and keep TOR_SOCKS_PORT=9050) in
+  # .env so the web + scheduler services route onion fetches through it.
+  tor:
+    image: dperson/torproxy:latest
+    container_name: threatintel-tor
+    profiles: ["tor"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider",
+             "--timeout=10", "--tries=1",
+             "--proxy=on", "--proxy-host=127.0.0.1", "--proxy-port=9050",
+             "https://check.torproject.org/api/ip"]
+      interval: 60s
+      timeout: 15s
+      retries: 3

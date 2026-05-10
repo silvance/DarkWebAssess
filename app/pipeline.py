@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional
 
 from app.alerts.telegram import format_alert_message, is_configured, send_telegram
+from app.collectors.onion_collector import collect_onion
 from app.collectors.rss_collector import collect_rss
 from app.config import (
     ALERT_MIN_SEVERITY,
@@ -161,7 +162,11 @@ def run_collection_cycle(only: Optional[List[str]] = None) -> dict:
         for src in _enabled(cfg.sources):
             if only_set and src.name not in only_set:
                 continue
-            if src.type != "rss":
+            if src.type == "rss":
+                fetcher = collect_rss
+            elif src.type == "onion":
+                fetcher = collect_onion
+            else:
                 log.warning("Skipping unsupported source type %s", src.type)
                 continue
 
@@ -180,7 +185,7 @@ def run_collection_cycle(only: Optional[List[str]] = None) -> dict:
 
             log.info("Collecting %s (%s)", src.name, src.url)
             try:
-                docs = list(collect_rss(src.model_dump()))
+                docs = list(fetcher(src.model_dump()))
             except Exception as exc:  # noqa: BLE001
                 log.exception("Collection failed for %s", src.name)
                 mark_source_error(conn, src.name, str(exc))

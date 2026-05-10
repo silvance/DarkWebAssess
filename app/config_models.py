@@ -10,9 +10,10 @@ from `app.config_models` and let exceptions propagate; the CLI layer prints
 the validation error and exits non-zero.
 """
 from typing import List, Literal, Optional
+from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---- entries ------------------------------------------------------------
 SeverityLiteral = Literal["low", "medium", "high", "critical"]
@@ -25,7 +26,8 @@ WatchlistType = Literal[
 class SourceEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=200)
-    type: Literal["rss"]  # only RSS is wired up today; expand as collectors land
+    # rss = clearweb feed; onion = HTTP fetch routed through Tor SOCKS proxy.
+    type: Literal["rss", "onion"]
     url: str = Field(min_length=1, max_length=2000)
     enabled: bool = True
 
@@ -35,6 +37,24 @@ class SourceEntry(BaseModel):
         if not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("source url must start with http:// or https://")
         return v
+
+    @model_validator(mode="after")
+    def _onion_type_requires_onion_host(self):
+        """An onion-typed source must point at a *.onion hostname, and a
+        non-onion source must not. Stops the easy misconfiguration where
+        someone marks an https://news/feed source `type: onion` (which would
+        force it through Tor for no reason) or vice versa (which would
+        leak the .onion fetch over the clearweb)."""
+        host = (urlparse(self.url).hostname or "").lower()
+        is_onion_host = host.endswith(".onion")
+        if self.type == "onion" and not is_onion_host:
+            raise ValueError("type=onion sources must use a *.onion URL")
+        if self.type == "rss" and is_onion_host:
+            raise ValueError(
+                "type=rss with a .onion URL would leak the request over the "
+                "clearweb — set type=onion to route through Tor."
+            )
+        return self
 
 
 class WatchlistEntry(BaseModel):

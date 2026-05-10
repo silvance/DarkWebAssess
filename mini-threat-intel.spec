@@ -29,6 +29,7 @@ for pkg in (
     "pydantic",
     "anthropic",
     "yaml",
+    "socks",  # pysocks — needed by requests for Tor SOCKS5 routing
 ):
     d, b, h = collect_all(pkg)
     datas += d
@@ -68,12 +69,14 @@ hiddenimports += [
     "app.cli.cmd_score",
     "app.cli.cmd_search",
     "app.cli.cmd_summarize",
+    "app.cli.cmd_tor",
     "app.cli.cmd_users",
     # Auth + collectors + extractors + matching + enrichment + cases + reports
     "app.auth.audit",
     "app.auth.middleware",
     "app.auth.passwords",
     "app.auth.users",
+    "app.collectors.onion_collector",
     "app.collectors.rss_collector",
     "app.extractors.entities",
     "app.extractors.handles",
