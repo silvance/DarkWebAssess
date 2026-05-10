@@ -92,6 +92,10 @@ pip install pytest
 pytest -q
 ```
 
+## Status
+
+Milestone 1 of the larger phased plan. See *Roadmap* for what comes next.
+
 ## Roadmap
 
 The full multi-phase plan (collectors → extractors → matching → enrichment →
