@@ -27,6 +27,10 @@ In scope for Milestone 1:
   configurable freshness window.
 - Rule-based scoring (0–100) with reasons, derived severity, suppression
   rules, and false-positive feedback loop.
+- Background scheduler (APScheduler) for collect / enrich / source-health
+  with per-source exponential backoff and a `job_runs` history table.
+- SQLite FTS5 full-text search over collected documents with snippets,
+  source/date filters, and CSV / JSON export.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -46,6 +50,8 @@ app/
   matching/scoring.py           # rule-based 0-100 priority + reasons
   matching/suppression.py       # YAML-driven suppression rules
   enrichment/                   # CISA KEV, EPSS, URLhaus, MalwareBazaar, VT, AbuseIPDB
+  jobs/                         # APScheduler scheduler + record_run wrapper
+  search.py                     # FTS5 query helpers
   alerts/telegram.py
   ui/streamlit_app.py
   config.py
@@ -90,6 +96,11 @@ python -m app.main enrich --type cve --value CVE-2024-3400
 python -m app.main enrich --limit 50 --force   # ignore cache, cap to 50 entities
 python -m app.main score                       # score matches that have no score yet
 python -m app.main score --rescore-all         # re-run scoring across all matches
+python -m app.main scheduler                   # foreground job scheduler (ctrl-C to stop)
+python -m app.main scheduler --run-now         # also fire every job once on startup
+python -m app.main search "lockbit ransomware" # FTS5 search
+python -m app.main search "lock*" --source "Krebs on Security" --limit 10
+python -m app.main reindex                     # rebuild the FTS index
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -119,6 +130,12 @@ Environment variables (see `.env.example`):
 - `SUPPRESSION_PATH` — path to `suppression.yaml` (default in repo root)
 - `ALERT_MIN_SCORE` — additional score gate for Telegram alerts (default 0,
   meaning the existing severity gate alone determines alerting)
+- `COLLECT_INTERVAL_MINUTES` (30), `ENRICH_INTERVAL_MINUTES` (15),
+  `ENRICH_BATCH_LIMIT` (100), `SOURCE_HEALTH_INTERVAL_HOURS` (12) — scheduler
+  cadences
+- `SOURCE_BACKOFF_BASE_MINUTES` (5), `SOURCE_BACKOFF_MAX_EXPONENT` (6) — when a
+  source errors, the next attempt is delayed by `BASE * 2^min(error_count, MAX)`
+  minutes
 
 ## Tests
 
@@ -129,8 +146,9 @@ pytest -q
 
 ## Status
 
-Milestones 1, 2, 5 (enrichment), and 6 (scoring) of the larger phased plan.
-See *Roadmap* for what comes next.
+Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), and 9
+(full-text search) of the larger phased plan. See *Roadmap* for what comes
+next.
 
 ## Roadmap
 

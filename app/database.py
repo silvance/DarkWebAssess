@@ -1,8 +1,11 @@
+import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 from app.config import DATABASE_PATH
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sources (
@@ -101,19 +104,65 @@ CREATE TABLE IF NOT EXISTS enrichments (
 );
 CREATE INDEX IF NOT EXISTS idx_enrichments_value ON enrichments(entity_type, entity_value);
 CREATE INDEX IF NOT EXISTS idx_enrichments_provider ON enrichments(provider);
+
+CREATE TABLE IF NOT EXISTS job_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_name TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    success INTEGER,
+    message TEXT,
+    duration_seconds REAL
+);
+CREATE INDEX IF NOT EXISTS idx_job_runs_name ON job_runs(job_name);
+CREATE INDEX IF NOT EXISTS idx_job_runs_started ON job_runs(started_at);
+"""
+
+FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+    title, raw_text, source_name, source_url,
+    content='documents', content_rowid='id',
+    tokenize='porter unicode61'
+);
+"""
+
+FTS_TRIGGERS = """
+CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+    INSERT INTO documents_fts(rowid, title, raw_text, source_name, source_url)
+    VALUES (new.id, new.title, new.raw_text, new.source_name, new.source_url);
+END;
+CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, raw_text, source_name, source_url)
+    VALUES('delete', old.id, old.title, old.raw_text, old.source_name, old.source_url);
+END;
+CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, raw_text, source_name, source_url)
+    VALUES('delete', old.id, old.title, old.raw_text, old.source_name, old.source_url);
+    INSERT INTO documents_fts(rowid, title, raw_text, source_name, source_url)
+    VALUES (new.id, new.title, new.raw_text, new.source_name, new.source_url);
+END;
 """
 
 
-def get_connection(db_path: str = DATABASE_PATH) -> sqlite3.Connection:
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+def _resolve_db_path(db_path):
+    """Read DATABASE_PATH lazily so tests can monkeypatch the module global."""
+    if db_path is not None:
+        return db_path
+    import app.database as _self
+    return getattr(_self, "DATABASE_PATH", DATABASE_PATH)
+
+
+def get_connection(db_path=None) -> sqlite3.Connection:
+    path = _resolve_db_path(db_path)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Add columns introduced after the initial schema for existing DBs."""
+    """Add columns / FTS index / triggers introduced after the initial schema."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(matches)")}
     for name, ddl in (
         ("score", "ALTER TABLE matches ADD COLUMN score INTEGER"),
@@ -124,8 +173,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(ddl)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_score ON matches(score)")
 
+    # FTS5 + triggers (best-effort — sqlite without FTS5 just disables search).
+    try:
+        conn.executescript(FTS_SCHEMA)
+        conn.executescript(FTS_TRIGGERS)
+    except sqlite3.OperationalError as exc:
+        log.warning("FTS5 unavailable; full-text search disabled: %s", exc)
+        return
 
-def init_db(db_path: str = DATABASE_PATH) -> None:
+    # Backfill the FTS index from existing documents if it's empty.
+    try:
+        n_fts = conn.execute("SELECT COUNT(*) AS n FROM documents_fts").fetchone()["n"]
+        n_docs = conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()["n"]
+        if n_docs > 0 and n_fts == 0:
+            conn.execute("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')")
+    except sqlite3.OperationalError as exc:
+        log.warning("FTS5 backfill skipped: %s", exc)
+
+
+def init_db(db_path=None) -> None:
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
@@ -133,7 +199,7 @@ def init_db(db_path: str = DATABASE_PATH) -> None:
 
 
 @contextmanager
-def db_cursor(db_path: str = DATABASE_PATH):
+def db_cursor(db_path=None):
     conn = get_connection(db_path)
     try:
         yield conn

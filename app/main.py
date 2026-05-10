@@ -12,14 +12,18 @@ Subcommands:
 import argparse
 import logging
 import sys
-from typing import Iterable
+from datetime import datetime, timedelta, timezone
+from typing import Iterable, List, Optional
 
 import yaml
 
 from app.alerts.telegram import format_alert_message, is_configured, send_telegram
 from app.config import (
     ALERT_MIN_SEVERITY,
+    ENRICH_BATCH_LIMIT,
     SEVERITY_ORDER,
+    SOURCE_BACKOFF_BASE_MINUTES,
+    SOURCE_BACKOFF_MAX_EXPONENT,
     SOURCES_PATH,
     WATCHLIST_PATH,
 )
@@ -147,22 +151,58 @@ def _iter_enabled_sources(sources: Iterable[dict]):
             yield src
 
 
-def cmd_collect(args):
+def _backoff_until(error_count: int, last_checked_at: Optional[str]) -> Optional[datetime]:
+    """Exponential backoff cap, returns the wall-clock time before which we
+    should not retry this source. None means no backoff in effect."""
+    if not error_count or not last_checked_at:
+        return None
+    exp = min(int(error_count), SOURCE_BACKOFF_MAX_EXPONENT)
+    minutes = SOURCE_BACKOFF_BASE_MINUTES * (2 ** exp)
+    try:
+        last = datetime.strptime(last_checked_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return last + timedelta(minutes=minutes)
+
+
+def run_collection_cycle(only: Optional[List[str]] = None) -> dict:
+    """One full collection cycle. Returns a stats dict; safe to call from
+    the CLI or the scheduler."""
     sources = load_yaml(SOURCES_PATH).get("sources", []) or []
-    only = set(args.only) if args.only else None
-    totals = {"new": 0, "duplicate": 0, "entities": 0, "matches": 0, "alerts": 0, "errors": 0}
+    only_set = set(only) if only else None
+    totals = {
+        "new": 0,
+        "duplicate": 0,
+        "entities": 0,
+        "matches": 0,
+        "alerts": 0,
+        "errors": 0,
+        "skipped": 0,
+    }
 
     with db_cursor() as conn:
         # Make sure sources are registered for health tracking.
         for src in sources:
             upsert_source(conn, src)
 
+        now = datetime.now(timezone.utc)
         for src in _iter_enabled_sources(sources):
-            if only and src["name"] not in only:
+            if only_set and src["name"] not in only_set:
                 continue
             if src["type"] != "rss":
                 log.warning("Skipping unsupported source type %s", src["type"])
                 continue
+
+            db_row = conn.execute(
+                "SELECT error_count, last_checked_at FROM sources WHERE name = ?",
+                (src["name"],),
+            ).fetchone()
+            until = _backoff_until(db_row["error_count"], db_row["last_checked_at"]) if db_row else None
+            if until and now < until:
+                log.info("Skipping %s due to backoff until %s", src["name"], until.isoformat())
+                totals["skipped"] += 1
+                continue
+
             log.info("Collecting %s (%s)", src["name"], src["url"])
             try:
                 docs = list(collect_rss(src))
@@ -179,11 +219,17 @@ def cmd_collect(args):
                         totals[k] += s[k]
             mark_source_success(conn, src["name"])
 
+    return totals
+
+
+def cmd_collect(args):
+    totals = run_collection_cycle(only=args.only)
     print(
         "Collection done. "
         f"new={totals['new']} dup={totals['duplicate']} "
         f"entities={totals['entities']} matches={totals['matches']} "
-        f"alerts={totals['alerts']} errors={totals['errors']}"
+        f"alerts={totals['alerts']} errors={totals['errors']} "
+        f"skipped={totals['skipped']}"
     )
 
 
@@ -247,33 +293,30 @@ def cmd_score(args):
     print(f"Scored {len(ids)} matches.")
 
 
-def cmd_enrich(args):
+def run_enrichment_cycle(
+    entity_type: Optional[str] = None,
+    entity_value: Optional[str] = None,
+    limit: Optional[int] = None,
+    force: bool = False,
+) -> dict:
+    """One enrichment cycle. Returns a stats dict including target count."""
     providers = default_providers()
     configured = [p for p in providers if p.is_configured()]
-    skipped = [p.name for p in providers if not p.is_configured()]
-    if skipped:
-        log.info("Skipping unconfigured providers: %s", ", ".join(skipped))
     if not configured:
-        print("No enrichment providers are configured.")
-        return
+        return {"targets": 0, "hits": 0, "cached": 0, "errors": 0, "skipped": 0, "configured": 0}
 
-    targets = []
-    if args.value and args.type:
-        targets = [(args.type, args.value)]
+    if entity_value and entity_type:
+        targets = [(entity_type, entity_value)]
     else:
         with db_cursor() as conn:
-            types = [args.type] if args.type else None
-            targets = iter_distinct_entities(conn, entity_types=types, limit=args.limit)
-        if not targets:
-            print("No entities to enrich.")
-            return
+            types = [entity_type] if entity_type else None
+            targets = iter_distinct_entities(conn, entity_types=types, limit=limit)
 
-    totals = {"hits": 0, "cached": 0, "errors": 0, "skipped": 0}
+    totals = {"targets": len(targets), "hits": 0, "cached": 0, "errors": 0, "skipped": 0,
+              "configured": len(configured)}
     with db_cursor() as conn:
         for etype, evalue in targets:
-            outcomes = enrich_entity(
-                conn, etype, evalue, providers=configured, force=args.force
-            )
+            outcomes = enrich_entity(conn, etype, evalue, providers=configured, force=force)
             if not outcomes:
                 totals["skipped"] += 1
                 continue
@@ -284,9 +327,28 @@ def cmd_enrich(args):
                     totals["hits"] += 1
                 else:
                     totals["errors"] += 1
+    return totals
+
+
+def cmd_enrich(args):
+    providers = default_providers()
+    configured = [p for p in providers if p.is_configured()]
+    skipped = [p.name for p in providers if not p.is_configured()]
+    if skipped:
+        log.info("Skipping unconfigured providers: %s", ", ".join(skipped))
+    if not configured:
+        print("No enrichment providers are configured.")
+        return
+
+    totals = run_enrichment_cycle(
+        entity_type=args.type, entity_value=args.value, limit=args.limit, force=args.force
+    )
+    if totals["targets"] == 0:
+        print("No entities to enrich.")
+        return
     print(
         "Enrichment done. "
-        f"targets={len(targets)} hits={totals['hits']} cached={totals['cached']} "
+        f"targets={totals['targets']} hits={totals['hits']} cached={totals['cached']} "
         f"errors={totals['errors']} skipped={totals['skipped']}"
     )
 
@@ -297,6 +359,46 @@ def cmd_alert_test(_args):
         sys.exit(1)
     ok, err = send_telegram("Test alert from mini-threat-intel.")
     print("OK" if ok else f"FAILED: {err}")
+
+
+def cmd_scheduler(args):
+    from app.jobs.scheduler import run_scheduler
+
+    try:
+        run_scheduler(run_now=args.run_now)
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Scheduler stopped.")
+
+
+def cmd_search(args):
+    from app.search import search_documents
+
+    with db_cursor() as conn:
+        rows = search_documents(
+            conn,
+            args.query,
+            source_name=args.source,
+            since=args.since,
+            until=args.until,
+            limit=args.limit,
+        )
+    if not rows:
+        print("No results.")
+        return
+    for r in rows:
+        print(f"[{r['retrieved_at']}] {r['source_name']}: {r['title'] or '(no title)'}")
+        print(f"  {r['source_url']}")
+        if r.get("snippet"):
+            print(f"  {r['snippet']}")
+        print()
+
+
+def cmd_reindex(_args):
+    from app.search import reindex as fts_reindex
+
+    with db_cursor() as conn:
+        n = fts_reindex(conn)
+    print(f"FTS index rebuilt over {n} documents.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -331,6 +433,22 @@ def build_parser() -> argparse.ArgumentParser:
     pe.set_defaults(func=cmd_enrich)
 
     sub.add_parser("alert-test", help="Send a test Telegram alert.").set_defaults(func=cmd_alert_test)
+
+    psched = sub.add_parser("scheduler", help="Run collect/enrich/source-health on intervals.")
+    psched.add_argument("--run-now", action="store_true", help="Trigger every job immediately on start.")
+    psched.set_defaults(func=cmd_scheduler)
+
+    psr = sub.add_parser("search", help="Full-text search over collected documents.")
+    psr.add_argument("query", help="Search query (FTS5 syntax accepted).")
+    psr.add_argument("--source", help="Restrict to a single source name.")
+    psr.add_argument("--since", help="Only documents retrieved at/after this ISO timestamp.")
+    psr.add_argument("--until", help="Only documents retrieved at/before this ISO timestamp.")
+    psr.add_argument("--limit", type=int, default=20)
+    psr.set_defaults(func=cmd_search)
+
+    sub.add_parser("reindex", help="Rebuild the FTS index from documents.").set_defaults(
+        func=cmd_reindex
+    )
 
     return p
 

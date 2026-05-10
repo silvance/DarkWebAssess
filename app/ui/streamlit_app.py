@@ -287,13 +287,99 @@ def page_enrichment():
                         st.code(r["result_json"] or "")
 
 
+def page_search():
+    from app.search import escape_fts, fts_available, search_documents
+
+    st.title("Full-text Search")
+    if not fts_available(_conn()):
+        st.error("FTS5 is not enabled in this SQLite build; search is disabled.")
+        return
+
+    query = st.text_input("Query", help="Plain words are AND-ed; trailing * means prefix match.")
+    col1, col2, col3, col4 = st.columns(4)
+    sources = [r[0] for r in _conn().execute(
+        "SELECT DISTINCT source_name FROM documents ORDER BY source_name"
+    ).fetchall()]
+    with col1:
+        source = st.selectbox("Source", [""] + sources)
+    with col2:
+        since = st.text_input("Since (ISO)", "")
+    with col3:
+        until = st.text_input("Until (ISO)", "")
+    with col4:
+        limit = st.number_input("Limit", 5, 500, 50, 5)
+
+    if not query:
+        st.caption(f"FTS query preview: `{escape_fts('')}`")
+        return
+
+    st.caption(f"FTS query preview: `{escape_fts(query)}`")
+    results = search_documents(
+        _conn(),
+        query,
+        source_name=source or None,
+        since=since or None,
+        until=until or None,
+        limit=int(limit),
+    )
+    st.write(f"{len(results)} results")
+    if results:
+        df = pd.DataFrame(results)
+        st.dataframe(df[["retrieved_at", "source_name", "title", "snippet", "source_url"]],
+                     use_container_width=True)
+        st.download_button(
+            "Download CSV",
+            df.to_csv(index=False).encode("utf-8"),
+            file_name="search_results.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "Download JSON",
+            df.to_json(orient="records", indent=2).encode("utf-8"),
+            file_name="search_results.json",
+            mime="application/json",
+        )
+
+
+def page_jobs():
+    st.title("Jobs")
+    summary = _query(
+        """
+        SELECT job_name,
+               COUNT(*) AS runs,
+               SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
+               SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS errors,
+               MAX(started_at) AS last_run,
+               AVG(duration_seconds) AS avg_seconds
+        FROM job_runs
+        GROUP BY job_name
+        ORDER BY job_name
+        """
+    )
+    st.subheader("Per-job summary")
+    st.dataframe(summary, use_container_width=True)
+
+    st.subheader("Recent runs")
+    recent = _query(
+        """
+        SELECT id, job_name, started_at, finished_at, success, duration_seconds, message
+        FROM job_runs
+        ORDER BY started_at DESC
+        LIMIT 100
+        """
+    )
+    st.dataframe(recent, use_container_width=True)
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
+    "Search": page_search,
     "Documents": page_documents,
     "Entities": page_entities,
     "Enrichment": page_enrichment,
     "Sources": page_sources,
+    "Jobs": page_jobs,
 }
 
 choice = st.sidebar.radio("Page", list(PAGES.keys()))

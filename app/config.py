@@ -34,3 +34,13 @@ SUPPRESSION_PATH = os.getenv("SUPPRESSION_PATH", str(ROOT / "suppression.yaml"))
 # Optional alternate gate for Telegram alerts. When set, alerts fire if the
 # match score is at or above this value (in addition to the severity gate).
 ALERT_MIN_SCORE = int(os.getenv("ALERT_MIN_SCORE", "0"))
+
+# Phase 8 scheduler intervals.
+COLLECT_INTERVAL_MINUTES = int(os.getenv("COLLECT_INTERVAL_MINUTES", "30"))
+ENRICH_INTERVAL_MINUTES = int(os.getenv("ENRICH_INTERVAL_MINUTES", "15"))
+ENRICH_BATCH_LIMIT = int(os.getenv("ENRICH_BATCH_LIMIT", "100"))
+SOURCE_HEALTH_INTERVAL_HOURS = int(os.getenv("SOURCE_HEALTH_INTERVAL_HOURS", "12"))
+# Per-source backoff: sleep base 5 minutes, doubled per consecutive failure
+# (capped at 2^6 * 5 = 320 minutes ~= 5h20m).
+SOURCE_BACKOFF_BASE_MINUTES = int(os.getenv("SOURCE_BACKOFF_BASE_MINUTES", "5"))
+SOURCE_BACKOFF_MAX_EXPONENT = int(os.getenv("SOURCE_BACKOFF_MAX_EXPONENT", "6"))
