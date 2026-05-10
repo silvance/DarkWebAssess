@@ -73,7 +73,7 @@ def page_overview():
         LIMIT 10
         """
     )
-    st.dataframe(top, use_container_width=True)
+    st.dataframe(top, width="stretch")
 
     st.subheader("Recently collected documents")
     recent = _query(
@@ -84,7 +84,7 @@ def page_overview():
         LIMIT 25
         """
     )
-    st.dataframe(recent, use_container_width=True)
+    st.dataframe(recent, width="stretch")
 
 
 def page_matches():
@@ -138,7 +138,7 @@ def page_matches():
     st.write(f"{len(df)} matches")
 
     table_cols = [c for c in df.columns if c != "score_reasons"]
-    st.dataframe(df[table_cols], use_container_width=True)
+    st.dataframe(df[table_cols], width="stretch")
 
     st.subheader("Inspect match")
     if not df.empty:
@@ -299,7 +299,7 @@ def page_documents():
 
     df = _query(sql, tuple(params))
     st.write(f"{len(df)} documents")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
     if not df.empty:
         doc_id = st.number_input(
@@ -317,7 +317,7 @@ def page_documents():
                     (int(doc_id),),
                 )
                 st.subheader(f"Entities ({len(ents)})")
-                st.dataframe(ents, use_container_width=True)
+                st.dataframe(ents, width="stretch")
 
 
 def page_entities():
@@ -345,7 +345,7 @@ def page_entities():
     sql += " GROUP BY entity_type, entity_value ORDER BY sightings DESC LIMIT 500"
     df = _query(sql, tuple(params))
     st.write(f"{len(df)} entities")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
 
 def page_sources():
@@ -353,7 +353,7 @@ def page_sources():
     df = _query(
         "SELECT name, type, url, enabled, last_checked_at, last_success_at, last_error, error_count FROM sources ORDER BY name"
     )
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
 
 def page_enrichment():
@@ -376,7 +376,7 @@ def page_enrichment():
         """
     )
     st.subheader("Provider activity")
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary, width="stretch")
 
     st.subheader("Lookup an entity")
     col1, col2 = st.columns([1, 3])
@@ -451,7 +451,7 @@ def page_search():
     if results:
         df = pd.DataFrame(results)
         st.dataframe(df[["retrieved_at", "source_name", "title", "snippet", "source_url"]],
-                     use_container_width=True)
+                     width="stretch")
         st.download_button(
             "Download CSV",
             df.to_csv(index=False).encode("utf-8"),
@@ -482,7 +482,7 @@ def page_jobs():
         """
     )
     st.subheader("Per-job summary")
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary, width="stretch")
 
     st.subheader("Recent runs")
     recent = _query(
@@ -493,7 +493,7 @@ def page_jobs():
         LIMIT 100
         """
     )
-    st.dataframe(recent, use_container_width=True)
+    st.dataframe(recent, width="stretch")
 
 
 def page_cases():
@@ -528,7 +528,7 @@ def page_cases():
             "FROM cases ORDER BY updated_at DESC LIMIT 200"
         )
     st.write(f"{len(df)} cases")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
     st.markdown("---")
     st.subheader("Create a new case")
@@ -610,7 +610,7 @@ def page_cases():
     st.markdown("**Evidence**")
     if case["evidence"]:
         ev_df = pd.DataFrame(case["evidence"])
-        st.dataframe(ev_df[["id", "kind", "ref", "label", "added_at"]], use_container_width=True)
+        st.dataframe(ev_df[["id", "kind", "ref", "label", "added_at"]], width="stretch")
     else:
         st.caption("No evidence attached yet.")
 
@@ -635,6 +635,195 @@ def page_cases():
         payload = ev.get("payload") or {}
         bits = ", ".join(f"{k}={v}" for k, v in payload.items()) if payload else ""
         st.markdown(f"- `{ev['created_at']}` **{ev['event_type']}** by {ev['actor'] or 'system'} {bits}")
+
+
+def page_watchlist():
+    """Manage watchlist entries from the dashboard.
+
+    Edits write to the SQLite DB. The YAML file (`watchlist.yaml`) is the
+    source-of-truth for `sync-config`, so re-running that command will
+    upsert YAML entries on top of dashboard edits — but it will not delete
+    rules that exist only in the DB.
+    """
+    require_role(_user, "analyst")
+    from app.auth.audit import record_audit
+    from app.repository import (
+        delete_watchlist_entry,
+        list_watchlist,
+        update_watchlist_entry,
+        upsert_watchlist_entry,
+    )
+
+    WATCHLIST_TYPES = [
+        "domain", "email", "ip", "cve", "hash",
+        "onion", "wallet", "handle", "malware", "actor", "keyword",
+    ]
+    SEVERITIES = ["low", "medium", "high", "critical"]
+    actor = (_user or {}).get("username")
+    actor_role = (_user or {}).get("role")
+
+    st.title("Watchlist")
+    st.caption(
+        "Edits here write to the database. Running `python -m app.main "
+        "sync-config` will re-apply `watchlist.yaml` on top — YAML wins for "
+        "matching `(type, value)` pairs, but DB-only entries you add here "
+        "are kept."
+    )
+
+    # --- Filters ----------------------------------------------------------
+    fcol1, fcol2, fcol3 = st.columns(3)
+    with fcol1:
+        type_filter = st.selectbox(
+            "Filter by type", [""] + WATCHLIST_TYPES, format_func=lambda v: v or "all",
+        )
+    with fcol2:
+        search = st.text_input("Search value / description")
+    with fcol3:
+        enabled_only = st.checkbox("Only enabled", value=False)
+
+    rows = list_watchlist(
+        _conn(),
+        type_filter=type_filter or None,
+        search=search or None,
+        enabled_only=enabled_only,
+    )
+    st.write(f"{len(rows)} entries")
+    if rows:
+        df = pd.DataFrame(rows)
+        # Coerce enabled (0/1) into a friendlier display.
+        df_show = df.copy()
+        df_show["enabled"] = df_show["enabled"].apply(lambda v: "✓" if v else "—")
+        st.dataframe(
+            df_show[["id", "type", "value", "severity", "enabled", "description"]],
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.caption("(no entries match the current filter)")
+
+    st.markdown("---")
+
+    # --- Add new entry ----------------------------------------------------
+    with st.expander("Add new entry"):
+        with st.form("add_watchlist_entry"):
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col1:
+                new_type = st.selectbox("Type", WATCHLIST_TYPES, index=1, key="wl_new_type")
+            with col2:
+                new_value = st.text_input("Value", key="wl_new_value")
+            with col3:
+                new_severity = st.selectbox("Severity", SEVERITIES, index=2, key="wl_new_sev")
+            new_description = st.text_input("Description (optional)", key="wl_new_desc")
+            new_enabled = st.checkbox("Enabled", value=True, key="wl_new_en")
+            if st.form_submit_button("Add"):
+                if not new_value or not new_value.strip():
+                    st.error("Value cannot be empty.")
+                else:
+                    try:
+                        with _conn() as conn:
+                            entry_id = upsert_watchlist_entry(conn, {
+                                "type": new_type,
+                                "value": new_value.strip(),
+                                "description": new_description.strip() or None,
+                                "severity": new_severity,
+                                "enabled": new_enabled,
+                            })
+                            record_audit(
+                                conn, action="watchlist_added", actor=actor,
+                                actor_role=actor_role,
+                                target_type="watchlist", target_id=str(entry_id),
+                                payload={
+                                    "type": new_type, "value": new_value.strip(),
+                                    "severity": new_severity, "enabled": new_enabled,
+                                },
+                            )
+                            conn.commit()
+                        st.success(f"Added entry #{entry_id}.")
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Could not add entry: {exc}")
+
+    # --- Edit / delete ----------------------------------------------------
+    if rows:
+        with st.expander("Edit or delete an entry"):
+            ids = [r["id"] for r in rows]
+            target_id = st.selectbox(
+                "Select entry by ID",
+                ids,
+                format_func=lambda i: (
+                    f"#{i} — {next(r for r in rows if r['id'] == i)['type']}: "
+                    f"{next(r for r in rows if r['id'] == i)['value']}"
+                ),
+                key="wl_edit_id",
+            )
+            target = next(r for r in rows if r["id"] == target_id)
+
+            ec1, ec2 = st.columns([1, 3])
+            with ec1:
+                edit_severity = st.selectbox(
+                    "Severity",
+                    SEVERITIES,
+                    index=SEVERITIES.index(target["severity"]) if target["severity"] in SEVERITIES else 1,
+                    key="wl_edit_sev",
+                )
+            with ec2:
+                edit_enabled = st.checkbox(
+                    "Enabled", value=bool(target["enabled"]), key="wl_edit_en",
+                )
+            edit_description = st.text_input(
+                "Description", value=target["description"] or "", key="wl_edit_desc",
+            )
+
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                if st.button("Save changes", key="wl_save"):
+                    try:
+                        with _conn() as conn:
+                            updated = update_watchlist_entry(
+                                conn, target_id,
+                                description=edit_description if edit_description != (target["description"] or "") else None,
+                                severity=edit_severity,
+                                enabled=edit_enabled,
+                            )
+                            record_audit(
+                                conn, action="watchlist_updated", actor=actor,
+                                actor_role=actor_role,
+                                target_type="watchlist", target_id=str(target_id),
+                                payload={
+                                    "type": target["type"], "value": target["value"],
+                                    "severity": edit_severity,
+                                    "enabled": edit_enabled,
+                                    "description": edit_description or None,
+                                },
+                            )
+                            conn.commit()
+                        st.success(f"Updated entry #{target_id}.")
+                        st.rerun()
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Update failed: {exc}")
+            with bc2:
+                confirm = st.checkbox("I'm sure", key="wl_delete_confirm")
+                if st.button("Delete", key="wl_delete", disabled=not confirm):
+                    try:
+                        with _conn() as conn:
+                            ok = delete_watchlist_entry(conn, target_id)
+                            if ok:
+                                record_audit(
+                                    conn, action="watchlist_deleted", actor=actor,
+                                    actor_role=actor_role,
+                                    target_type="watchlist", target_id=str(target_id),
+                                    payload={
+                                        "type": target["type"], "value": target["value"],
+                                    },
+                                )
+                            conn.commit()
+                        if ok:
+                            st.success(f"Deleted entry #{target_id}.")
+                            st.rerun()
+                        else:
+                            st.error("Entry not found.")
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Delete failed: {exc}")
 
 
 def page_reports():
@@ -702,7 +891,7 @@ def page_reports():
         "SELECT id, name, title, generated_at, window_start, window_end "
         "FROM reports ORDER BY generated_at DESC LIMIT 100"
     )
-    st.dataframe(saved, use_container_width=True)
+    st.dataframe(saved, width="stretch")
     if not saved.empty:
         rid = st.number_input("Report ID", min_value=int(saved["id"].min()),
                               max_value=int(saved["id"].max()), step=1)
@@ -737,7 +926,7 @@ def page_admin():
     st.subheader("Users")
     users = pd.DataFrame(list_users(_conn()))
     if not users.empty:
-        st.dataframe(users, use_container_width=True)
+        st.dataframe(users, width="stretch")
     else:
         st.caption("No users yet.")
 
@@ -813,14 +1002,14 @@ def page_admin():
         "TELEGRAM_BOT_TOKEN",
     ]:
         key_status.append({"env_var": env_var, "set": bool(os.getenv(env_var))})
-    st.dataframe(pd.DataFrame(key_status), use_container_width=True)
+    st.dataframe(pd.DataFrame(key_status), width="stretch")
     st.caption("Values are never displayed in the dashboard.")
 
     st.markdown("---")
     st.subheader("Recent audit log")
     audit_rows = list_audit(_conn(), limit=200)
     if audit_rows:
-        st.dataframe(pd.DataFrame(audit_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(audit_rows), width="stretch")
     else:
         st.caption("No audit entries yet.")
 
@@ -889,20 +1078,20 @@ def page_relationships():
     st.subheader(f"Neighbors ({len(rows)})")
     if rows:
         df = pd.DataFrame(rows)[["neighbor_type", "neighbor_value", "shared_docs", "last_seen"]]
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
     else:
         st.caption("No neighbors at the current filter / threshold.")
 
     if rows and st.checkbox("Show graph", value=True):
         max_nodes = st.slider("Nodes to draw", 5, min(50, len(rows)), value=min(20, len(rows)))
         dot = build_graphviz(etype, evalue, rows, max_nodes=max_nodes)
-        st.graphviz_chart(dot, use_container_width=True)
+        st.graphviz_chart(dot, width="stretch")
 
     st.markdown("---")
     st.subheader("Documents where this entity appears")
     docs = related_documents(_conn(), etype, evalue, limit=20)
     if docs:
-        st.dataframe(pd.DataFrame(docs), use_container_width=True)
+        st.dataframe(pd.DataFrame(docs), width="stretch")
     else:
         st.caption("No documents recorded.")
 
@@ -911,6 +1100,7 @@ PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
     "Cases": page_cases,
+    "Watchlist": page_watchlist,
     "Reports": page_reports,
     "Relationships": page_relationships,
     "Search": page_search,

@@ -270,9 +270,13 @@ def _resolve_db_path(db_path):
 def get_connection(db_path=None) -> sqlite3.Connection:
     path = _resolve_db_path(db_path)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    # `:memory:` and other special paths shouldn't get a 5-second wait; only
-    # set busy_timeout for real on-disk DBs where we expect concurrent access.
-    conn = sqlite3.connect(path, timeout=30)
+    # check_same_thread=False is required because Streamlit runs each script
+    # rerun on a fresh worker thread (so a connection cached via
+    # @st.cache_resource gets accessed from a different thread than it was
+    # created on). APScheduler also dispatches to a worker pool. WAL +
+    # Python's internal connection lock keep concurrent access safe for
+    # our short-transaction workload.
+    conn = sqlite3.connect(path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     # Concurrent dashboard + scheduler access needs WAL so readers don't

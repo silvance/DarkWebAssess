@@ -125,6 +125,91 @@ def upsert_watchlist_entry(conn: sqlite3.Connection, entry: dict) -> int:
     return row["id"]
 
 
+def list_watchlist(
+    conn: sqlite3.Connection,
+    *,
+    type_filter: Optional[str] = None,
+    search: Optional[str] = None,
+    enabled_only: bool = False,
+):
+    """List watchlist entries with optional filters.
+
+    Returns rows as plain dicts so the dashboard can stuff them into a
+    DataFrame without sqlite3.Row coupling.
+    """
+    sql = (
+        "SELECT id, type, value, description, severity, enabled "
+        "FROM watchlist WHERE 1=1"
+    )
+    params: list = []
+    if type_filter:
+        sql += " AND type = ?"
+        params.append(type_filter.lower())
+    if search:
+        sql += " AND (value LIKE ? OR description LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    if enabled_only:
+        sql += " AND enabled = 1"
+    sql += " ORDER BY type, value"
+    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def get_watchlist_entry(conn: sqlite3.Connection, entry_id: int):
+    row = conn.execute(
+        "SELECT id, type, value, description, severity, enabled "
+        "FROM watchlist WHERE id = ?",
+        (int(entry_id),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_watchlist_entry(
+    conn: sqlite3.Connection,
+    entry_id: int,
+    *,
+    description: Optional[str] = None,
+    severity: Optional[str] = None,
+    enabled: Optional[bool] = None,
+) -> Optional[dict]:
+    """Update mutable fields on a watchlist entry. Returns the updated row,
+    or None if the id doesn't exist.
+
+    `type` and `value` are intentionally NOT mutable here — they form the
+    UNIQUE identity of the row, and changing them is "delete and re-add"
+    in semantic terms.
+    """
+    existing = get_watchlist_entry(conn, entry_id)
+    if existing is None:
+        return None
+
+    changes = {}
+    if description is not None and description != existing["description"]:
+        changes["description"] = description
+    if severity is not None:
+        sev = severity.lower()
+        if sev != existing["severity"]:
+            changes["severity"] = sev
+    if enabled is not None:
+        flag = 1 if enabled else 0
+        if flag != existing["enabled"]:
+            changes["enabled"] = flag
+
+    if not changes:
+        return existing
+
+    set_clause = ", ".join(f"{k} = ?" for k in changes)
+    params = list(changes.values()) + [int(entry_id)]
+    conn.execute(f"UPDATE watchlist SET {set_clause} WHERE id = ?", params)
+    return get_watchlist_entry(conn, entry_id)
+
+
+def delete_watchlist_entry(conn: sqlite3.Connection, entry_id: int) -> bool:
+    """Returns True if a row was deleted, False if the id didn't exist."""
+    cur = conn.execute("DELETE FROM watchlist WHERE id = ?", (int(entry_id),))
+    return cur.rowcount > 0
+
+
 def insert_match(
     conn: sqlite3.Connection,
     document_id: int,
