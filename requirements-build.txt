@@ -1,0 +1,4 @@
+# Extra deps needed only when building a frozen executable (PyInstaller).
+# Install with: pip install -r requirements-build.txt
+-r requirements.txt
+pyinstaller>=6.4.0

@@ -1,0 +1,92 @@
+name: build-exe
+
+# Builds the Windows .exe bundle on every push, PR, and tagged release.
+# - On push / PR: artifact attached to the workflow run for download.
+# - On tag (v*): the same artifact is also attached to the GitHub Release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required so the release upload step can attach assets
+
+jobs:
+  windows:
+    name: Build mini-threat-intel.exe (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements-build.txt"
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Build executable
+        shell: pwsh
+        run: python scripts/build_exe.py
+
+      - name: Smoke-test the bundle
+        shell: pwsh
+        run: |
+          $exe = "dist/mini-threat-intel/mini-threat-intel.exe"
+          if (-not (Test-Path $exe)) { throw "exe not found at $exe" }
+          & $exe --help | Out-Host
+
+      - name: Package as zip
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ github.sha }}".Substring(0, 7) }
+          $zip = "mini-threat-intel-windows-x64-$version.zip"
+          Compress-Archive -Path dist/mini-threat-intel/* -DestinationPath $zip
+          "ZIP_NAME=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mini-threat-intel-windows
+          path: ${{ env.ZIP_NAME }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Extract release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $changelog = Get-Content -Raw -Path CHANGELOG.md
+          # Section header looks like "## v0.1.0 — 2026-05-10".
+          # Capture from "## $tag" up to the next "## v" header (or EOF).
+          $pattern = "(?ms)^##\s+$([regex]::Escape($tag))\b.*?(?=^##\s+v\d|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if ($match.Success) {
+              $match.Value | Set-Content -Path release_notes.md -Encoding utf8
+              Write-Host "Wrote release notes for $tag from CHANGELOG.md"
+          } else {
+              "Release $tag — see CHANGELOG.md" | Set-Content -Path release_notes.md -Encoding utf8
+              Write-Warning "No CHANGELOG section found for $tag — using fallback body"
+          }
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          fail_on_unmatched_files: true
+          body_path: release_notes.md
+          name: mini-threat-intel ${{ github.ref_name }}

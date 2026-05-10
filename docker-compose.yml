@@ -1,0 +1,72 @@
+# Docker Compose deployment for the mini threat-intel platform.
+#
+# Two services share a single `data/` volume holding the SQLite DB:
+#   web        — the Streamlit dashboard (port 8501)
+#   scheduler  — APScheduler background loop (collect / enrich / source-health)
+#
+# First-run flow:
+#   1. cp .env.example .env  &&  edit secrets (set AUTH_ENABLED=1)
+#   2. docker compose up -d --build
+#   3. open http://localhost:8501  → bootstrap form creates the first admin
+#
+# Backups:
+#   docker compose exec web python -m app.main backup --output /app/data/backup.db
+#
+# Dark-web (Tor) sources — opt-in:
+#   The `tor` service below is gated on the `tor` profile so it doesn't pull
+#   the Tor image for clearweb-only deployments. Enable it with:
+#     docker compose --profile tor up -d
+#   then set TOR_SOCKS_HOST=tor in .env.
+
+services:
+  web:
+    build: .
+    image: mini-threat-intel
+    container_name: threatintel-web
+    env_file: .env
+    environment:
+      AUTH_ENABLED: "1"
+      DATABASE_PATH: /app/data/threatintel.db
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./sources.yaml:/app/sources.yaml:ro
+      - ./watchlist.yaml:/app/watchlist.yaml:ro
+      - ./suppression.yaml:/app/suppression.yaml:ro
+    restart: unless-stopped
+
+  scheduler:
+    image: mini-threat-intel
+    container_name: threatintel-scheduler
+    env_file: .env
+    environment:
+      AUTH_ENABLED: "1"
+      DATABASE_PATH: /app/data/threatintel.db
+    volumes:
+      - ./data:/app/data
+      - ./sources.yaml:/app/sources.yaml:ro
+      - ./watchlist.yaml:/app/watchlist.yaml:ro
+      - ./suppression.yaml:/app/suppression.yaml:ro
+    command: ["python", "-m", "app.main", "scheduler"]
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  # --- Optional Tor SOCKS proxy --------------------------------------------
+  # Enabled via: `docker compose --profile tor up -d`
+  # When this is up, set TOR_SOCKS_HOST=tor (and keep TOR_SOCKS_PORT=9050) in
+  # .env so the web + scheduler services route onion fetches through it.
+  tor:
+    image: dperson/torproxy:latest
+    container_name: threatintel-tor
+    profiles: ["tor"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider",
+             "--timeout=10", "--tries=1",
+             "--proxy=on", "--proxy-host=127.0.0.1", "--proxy-port=9050",
+             "https://check.torproject.org/api/ip"]
+      interval: 60s
+      timeout: 15s
+      retries: 3

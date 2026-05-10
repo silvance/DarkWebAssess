@@ -14,14 +14,23 @@ def is_configured() -> bool:
 
 def format_alert_message(match: dict, document: dict) -> str:
     severity = match.get("severity", "medium").upper()
+    score = match.get("score")
+    reasons = match.get("reasons") or []
+    score_line = f"Score: {score}\n" if score is not None else ""
+    reasons_block = ""
+    if reasons:
+        bullet = "\n".join(f"  - {r}" for r in reasons[:6])
+        reasons_block = f"\nWhy:\n{bullet}\n"
     return (
         f"\U0001F6A8 New Threat Intel Match — {severity}\n\n"
         f"Matched: {match.get('matched_value')}\n"
         f"Type: {match.get('match_type')}\n"
+        f"{score_line}"
         f"Source: {document.get('source_name')}\n"
         f"Title: {document.get('title') or '(no title)'}\n"
         f"URL: {document.get('source_url')}\n"
-        f"Collected: {document.get('retrieved_at')}\n\n"
+        f"Collected: {document.get('retrieved_at')}\n"
+        f"{reasons_block}\n"
         f"Context: {match.get('context') or '(no context)'}"
     )
 

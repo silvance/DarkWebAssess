@@ -1,0 +1,28 @@
+suppress:
+  # Common legitimate domains that often appear in advisories as benign refs.
+  - type: domain
+    value: github.com
+    reason: code-hosting reference
+  - type: domain
+    value: microsoft.com
+    reason: vendor reference
+  - type: domain
+    value: google.com
+    reason: vendor reference
+  - type: domain
+    value: cisa.gov
+    reason: advisory reference
+  - type: domain
+    value: nvd.nist.gov
+    reason: CVE reference
+  - type: domain
+    value: mitre.org
+    reason: ATT&CK / CVE reference
+
+  # Suppress generic keyword hits when they come from low-context sources.
+  # Leaving an example commented out — uncomment and adapt for your sources.
+  # - type: keyword
+  #   value: ransomware
+  #   sources:
+  #     - SANS Internet Storm Center
+  #   reason: too generic on this source

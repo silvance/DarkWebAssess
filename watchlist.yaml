@@ -40,3 +40,56 @@ watchlist:
     description: Zero-day mentions
     severity: medium
     enabled: true
+
+  - type: malware
+    value: LockBit
+    description: LockBit ransomware family
+    severity: high
+    enabled: true
+
+  - type: actor
+    value: Volt Typhoon
+    description: PRC-aligned APT group
+    severity: critical
+    enabled: true
+
+  - type: onion
+    value: exampleexampleexampleexampleexampleexampleexampleexample00.onion
+    description: Example v3 onion (placeholder)
+    severity: high
+    enabled: false
+
+  - type: wallet
+    value: bc1qexamplewalletaddressxxxxxxxxxxxxxxxxxxxxxx
+    description: Example BTC bech32 wallet (placeholder)
+    severity: medium
+    enabled: false
+
+  - type: handle
+    value: "@example_actor"
+    description: Example threat-actor handle (placeholder)
+    severity: medium
+    enabled: false
+
+  # ----------------------------------------------------------------------
+  # Leak-site indicator alerts (disabled by default).
+  # The leak-listing extractor emits leak_status / leak_size / leak_deadline
+  # entities for documents that look like ransomware-leak landings. These
+  # keyword rules light up when those phrases appear in the source text.
+  - type: keyword
+    value: data published
+    description: Ransomware leak status — data has been released
+    severity: high
+    enabled: false
+
+  - type: keyword
+    value: auction started
+    description: Stolen-data auction has begun
+    severity: high
+    enabled: false
+
+  - type: keyword
+    value: deadline expired
+    description: Ransomware deadline has passed
+    severity: high
+    enabled: false

@@ -1,0 +1,66 @@
+malware:
+  - LockBit
+  - BlackCat
+  - ALPHV
+  - Conti
+  - REvil
+  - Sodinokibi
+  - Cl0p
+  - Clop
+  - Royal
+  - Akira
+  - Play
+  - Black Basta
+  - Rhysida
+  - Medusa
+  - 8Base
+  - Cobalt Strike
+  - Brute Ratel
+  - Sliver
+  - Metasploit
+  - Mimikatz
+  - Emotet
+  - TrickBot
+  - QakBot
+  - Qbot
+  - IcedID
+  - BumbleBee
+  - PikaBot
+  - DarkGate
+  - Latrodectus
+  - SocGholish
+  - PlugX
+  - ShadowPad
+  - Pegasus
+  - Predator
+  - FinFisher
+
+threat_actors:
+  - APT1
+  - APT10
+  - APT28
+  - APT29
+  - APT41
+  - APT37
+  - APT38
+  - APT40
+  - Lazarus
+  - Kimsuky
+  - FIN7
+  - FIN8
+  - FIN11
+  - Sandworm
+  - Volt Typhoon
+  - Salt Typhoon
+  - Flax Typhoon
+  - Scattered Spider
+  - Octo Tempest
+  - Cozy Bear
+  - Fancy Bear
+  - Wizard Spider
+  - Mustang Panda
+  - Charming Kitten
+  - APT-C-23
+  - TA505
+  - TA577
+  - UNC2452

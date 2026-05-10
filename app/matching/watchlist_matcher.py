@@ -143,6 +143,70 @@ def match_document(
                             }
                         )
 
+        elif wtype == "onion":
+            target = wvalue.strip().lower()
+            for ent in by_type.get("onion", []):
+                if ent["entity_value"].lower() == target:
+                    matches.append(
+                        {
+                            "watchlist_id": wid,
+                            "matched_value": ent["entity_value"],
+                            "match_type": "exact_onion",
+                            "context": ent.get("context"),
+                            "severity": severity,
+                        }
+                    )
+
+        elif wtype == "wallet":
+            target = wvalue.strip()
+            target_l = target.lower()
+            for wallet_kind in ("btc", "eth", "xmr"):
+                for ent in by_type.get(wallet_kind, []):
+                    val = ent["entity_value"]
+                    # ETH and BTC bech32 are emitted lowercased; BTC base58
+                    # and XMR keep original casing.
+                    if val == target or val.lower() == target_l:
+                        matches.append(
+                            {
+                                "watchlist_id": wid,
+                                "matched_value": val,
+                                "match_type": f"exact_{wallet_kind}",
+                                "context": ent.get("context"),
+                                "severity": severity,
+                            }
+                        )
+
+        elif wtype == "handle":
+            target = wvalue.strip()
+            if not target.startswith("@"):
+                target = "@" + target
+            target = target.lower()
+            for ent in by_type.get("handle", []):
+                if ent["entity_value"].lower() == target:
+                    matches.append(
+                        {
+                            "watchlist_id": wid,
+                            "matched_value": ent["entity_value"],
+                            "match_type": "exact_handle",
+                            "context": ent.get("context"),
+                            "severity": severity,
+                        }
+                    )
+
+        elif wtype in ("malware", "actor"):
+            target = wvalue.strip().lower()
+            for ent in by_type.get(wtype, []):
+                if ent["entity_value"].lower() == target:
+                    matches.append(
+                        {
+                            "watchlist_id": wid,
+                            "matched_value": ent["entity_value"],
+                            "match_type": f"exact_{wtype}",
+                            "context": ent.get("context"),
+                            "severity": severity,
+                        }
+                    )
+
         elif wtype == "keyword":
             m = _keyword_in_text(wvalue, haystack_refanged)
             if m:
