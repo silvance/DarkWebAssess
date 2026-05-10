@@ -57,3 +57,8 @@ DAILY_REPORT_INTERVAL_HOURS = int(os.getenv("DAILY_REPORT_INTERVAL_HOURS", "0"))
 # Flip AUTH_ENABLED=1 in production (Docker compose sets this for you).
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "0").lower() in ("1", "true", "yes", "on")
 AUTH_ROLES = ("viewer", "analyst", "admin")
+AUTH_MIN_PASSWORD_LEN = int(os.getenv("AUTH_MIN_PASSWORD_LEN", "8"))
+# After AUTH_LOCKOUT_THRESHOLD consecutive failed logins, an account is
+# temporarily locked for AUTH_LOCKOUT_MINUTES from the last failure.
+AUTH_LOCKOUT_THRESHOLD = int(os.getenv("AUTH_LOCKOUT_THRESHOLD", "10"))
+AUTH_LOCKOUT_MINUTES = int(os.getenv("AUTH_LOCKOUT_MINUTES", "15"))

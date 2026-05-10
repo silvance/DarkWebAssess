@@ -72,12 +72,30 @@ def gate(*, allow_anonymous: bool = False) -> Optional[dict]:
                 if not username or not password:
                     st.error("Both username and password are required.")
                     st.stop()
-                with get_connection() as bootstrap_conn:
-                    create_user(
-                        bootstrap_conn, username, password,
-                        role="admin", full_name=full_name or None, actor="bootstrap",
-                    )
-                    bootstrap_conn.commit()
+                from app.auth.passwords import WeakPasswordError
+                try:
+                    with get_connection() as bootstrap_conn:
+                        # Re-check inside the transaction so a parallel hit
+                        # to the bootstrap form doesn't try to create a
+                        # second admin and 500 on UNIQUE.
+                        if count_users(bootstrap_conn) > 0:
+                            st.warning(
+                                "An admin was created from another session. "
+                                "Sign in instead."
+                            )
+                            st.rerun()
+                        create_user(
+                            bootstrap_conn, username, password,
+                            role="admin", full_name=full_name or None,
+                            actor="bootstrap",
+                        )
+                        bootstrap_conn.commit()
+                except WeakPasswordError as exc:
+                    st.error(str(exc))
+                    st.stop()
+                except ValueError as exc:
+                    st.error(f"Could not create admin: {exc}")
+                    st.stop()
                 st.success("Admin created. Sign in below.")
                 st.rerun()
             st.stop()

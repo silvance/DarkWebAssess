@@ -26,6 +26,24 @@ VALID_STATUSES = (
 VALID_SEVERITIES = ("low", "medium", "high", "critical")
 VALID_KINDS = ("match", "document", "entity", "enrichment", "summary", "text")
 
+# Length caps on user-supplied free-form strings. Picked generously enough
+# that legitimate use is never blocked, but small enough that pathological
+# input can't blow up the dashboard or the markdown exporter.
+MAX_TITLE_LEN = 256
+MAX_LABEL_LEN = 256
+MAX_SUMMARY_LEN = 8_000
+MAX_NOTE_LEN = 16_000
+MAX_EVIDENCE_BODY_LEN = 32_000
+
+
+def _bounded(value: Optional[str], limit: int, *, field: str) -> Optional[str]:
+    """Reject strings longer than `limit`. None / empty pass through."""
+    if value is None:
+        return None
+    if len(value) > limit:
+        raise ValueError(f"{field} exceeds maximum length of {limit} characters")
+    return value
+
 
 # --- helpers --------------------------------------------------------------
 def _record_event(
@@ -70,6 +88,10 @@ def create_case(
         raise ValueError(f"Invalid status: {status}")
     if severity not in VALID_SEVERITIES:
         raise ValueError(f"Invalid severity: {severity}")
+    if not title or not title.strip():
+        raise ValueError("Case title cannot be empty")
+    title = _bounded(title, MAX_TITLE_LEN, field="title")
+    summary = _bounded(summary, MAX_SUMMARY_LEN, field="summary")
     now = utcnow_iso()
     cur = conn.execute(
         """
@@ -150,6 +172,12 @@ def update_case_field(
         raise ValueError(f"Field {field!r} is not directly editable")
     if field == "severity" and value not in VALID_SEVERITIES:
         raise ValueError(f"Invalid severity: {value}")
+    if field == "title":
+        if not value or not str(value).strip():
+            raise ValueError("Case title cannot be empty")
+        _bounded(value, MAX_TITLE_LEN, field="title")
+    elif field == "summary":
+        _bounded(value, MAX_SUMMARY_LEN, field="summary")
     case = get_case(conn, case_id)
     if not case:
         raise LookupError(f"Case {case_id} not found")
@@ -176,6 +204,7 @@ def add_note(
 ) -> int:
     if not body or not body.strip():
         raise ValueError("Note body cannot be empty")
+    body = _bounded(body, MAX_NOTE_LEN, field="note body")
     cur = conn.execute(
         "INSERT INTO case_notes (case_id, author, body, created_at) VALUES (?, ?, ?, ?)",
         (int(case_id), author, body.strip(), utcnow_iso()),
@@ -222,6 +251,8 @@ def attach_evidence(
         raise ValueError("Text evidence requires a body")
     if kind != "text" and not ref:
         raise ValueError(f"Evidence kind {kind!r} requires a ref")
+    label = _bounded(label, MAX_LABEL_LEN, field="label")
+    body = _bounded(body, MAX_EVIDENCE_BODY_LEN, field="evidence body")
 
     try:
         cur = conn.execute(

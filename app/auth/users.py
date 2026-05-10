@@ -1,13 +1,46 @@
 """User CRUD + role helpers + login workflow."""
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from app.auth.audit import record_audit
 from app.auth.passwords import hash_password, verify_password
-from app.config import AUTH_ROLES
+from app.config import (
+    AUTH_LOCKOUT_MINUTES,
+    AUTH_LOCKOUT_THRESHOLD,
+    AUTH_ROLES,
+)
 from app.normalizer import utcnow_iso
 
 ROLE_LEVELS = {"viewer": 1, "analyst": 2, "admin": 3}
+
+
+def _is_locked_out(user: dict) -> bool:
+    """True if `user` has hit the lockout threshold AND the cooldown window
+    is still in effect. We treat last_login_at as the timer source for
+    success and last_failed_at via failed_logins counter for failures —
+    since we don't store last_failed_at separately, we use updated_at via
+    a lightweight trick: when failed_logins is incremented we also bump
+    last_login_at to the current time-of-failure. To keep the schema
+    backward-compatible, we instead consult `last_failed_at` on the row
+    if present, else fall back to a fail-open behavior with a warning.
+    """
+    threshold = max(1, AUTH_LOCKOUT_THRESHOLD)
+    cooldown_minutes = max(1, AUTH_LOCKOUT_MINUTES)
+    failures = int(user.get("failed_logins") or 0)
+    if failures < threshold:
+        return False
+    last_failed = user.get("last_failed_at")
+    if not last_failed:
+        # Schema upgrade not yet run — treat as locked to fail safe.
+        return True
+    try:
+        ts = datetime.strptime(last_failed, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except (TypeError, ValueError):
+        return True
+    return datetime.now(timezone.utc) - ts < timedelta(minutes=cooldown_minutes)
 
 
 def has_role(user_role: Optional[str], required: str) -> bool:
@@ -159,10 +192,20 @@ def authenticate(
 ) -> Optional[dict]:
     """Verify credentials. Returns the user dict on success, None on failure.
 
-    Both success and failure are recorded in the audit log; failures also
-    increment `failed_logins`. Disabled accounts return None even if the
-    password is correct (and the audit row uses action=login_disabled)."""
+    Lockout: after AUTH_LOCKOUT_THRESHOLD consecutive failed logins, the
+    account is locked for AUTH_LOCKOUT_MINUTES from the timestamp of the
+    last failure. Both successful and failed attempts are written to the
+    audit log; lockouts are written with action=login_locked.
+    """
     user = get_user(conn, username)
+    if user and _is_locked_out(user):
+        record_audit(
+            conn, action="login_locked", actor=username, actor_role=user["role"],
+            ip_address=ip,
+            payload={"failed_logins": user.get("failed_logins")},
+        )
+        return None
+
     if not user or not verify_password(password, user["password_hash"]):
         record_audit(
             conn, action="login_failed", actor=username, ip_address=ip,
@@ -170,8 +213,13 @@ def authenticate(
         )
         if user:
             conn.execute(
-                "UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ?",
-                (user["id"],),
+                """
+                UPDATE users
+                SET failed_logins = failed_logins + 1,
+                    last_failed_at = ?
+                WHERE id = ?
+                """,
+                (utcnow_iso(), user["id"]),
             )
         return None
     if not user["enabled"]:
@@ -181,7 +229,11 @@ def authenticate(
         )
         return None
     conn.execute(
-        "UPDATE users SET last_login_at = ?, failed_logins = 0 WHERE id = ?",
+        """
+        UPDATE users
+        SET last_login_at = ?, failed_logins = 0, last_failed_at = NULL
+        WHERE id = ?
+        """,
         (utcnow_iso(), user["id"]),
     )
     record_audit(

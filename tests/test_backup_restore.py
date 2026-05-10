@@ -42,7 +42,7 @@ def _seed_doc(conn, content_hash):
 
 
 def test_backup_command_creates_valid_sqlite(temp_db, monkeypatch, tmp_path, capsys):
-    from app import main as appmain
+    from app.cli import cmd_backup as appmain
     monkeypatch.setattr("app.config.DATABASE_PATH", temp_db)
     # Seed something so backup has content.
     with get_connection(temp_db) as conn:
@@ -63,7 +63,7 @@ def test_backup_command_creates_valid_sqlite(temp_db, monkeypatch, tmp_path, cap
 
 
 def test_restore_replaces_db_with_force(temp_db, monkeypatch, tmp_path):
-    from app import main as appmain
+    from app.cli import cmd_backup as appmain
     monkeypatch.setattr("app.config.DATABASE_PATH", temp_db)
     # First write A → backup → mutate → restore → expect A.
     with get_connection(temp_db) as conn:
@@ -93,7 +93,7 @@ def test_restore_replaces_db_with_force(temp_db, monkeypatch, tmp_path):
 
 
 def test_restore_refuses_invalid_file(temp_db, monkeypatch, tmp_path):
-    from app import main as appmain
+    from app.cli import cmd_backup as appmain
     monkeypatch.setattr("app.config.DATABASE_PATH", temp_db)
     bogus = tmp_path / "not-a-db"
     bogus.write_text("definitely not sqlite")
@@ -107,7 +107,7 @@ def test_restore_refuses_invalid_file(temp_db, monkeypatch, tmp_path):
 
 
 def test_restore_writes_sidecar_bak(temp_db, monkeypatch, tmp_path):
-    from app import main as appmain
+    from app.cli import cmd_backup as appmain
     monkeypatch.setattr("app.config.DATABASE_PATH", temp_db)
 
     backup_path = tmp_path / "backup.db"

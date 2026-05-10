@@ -69,14 +69,13 @@ def record_run(job_name: str, fn: Callable[[], Any]) -> Any:
 
 # --- Job entry points -----------------------------------------------------
 def job_collect():
-    # Local import to avoid a circular import at module load time.
-    from app.main import run_collection_cycle
+    from app.pipeline import run_collection_cycle
 
     return run_collection_cycle()
 
 
 def job_enrich():
-    from app.main import run_enrichment_cycle
+    from app.pipeline import run_enrichment_cycle
 
     return run_enrichment_cycle(limit=ENRICH_BATCH_LIMIT)
 
@@ -98,26 +97,28 @@ def job_source_health():
     error_count and triggers backoff. We don't try to actually parse the
     feed here — that's the collector's job.
     """
-    import yaml
+    from app.config_models import load_sources
 
-    with open(SOURCES_PATH, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    sources = cfg.get("sources", []) or []
+    cfg = load_sources(SOURCES_PATH)
     headers = {"User-Agent": USER_AGENT}
     counts = {"ok": 0, "errors": 0}
     with db_cursor() as conn:
-        for src in sources:
-            if not src.get("enabled", True):
+        for src in cfg.sources:
+            if not src.enabled:
                 continue
             try:
-                resp = requests.head(src["url"], headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+                resp = requests.head(
+                    src.url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True
+                )
                 # Some servers reject HEAD; fall back to a light GET on 4xx.
                 if resp.status_code >= 400 and resp.status_code != 405:
-                    resp = requests.get(src["url"], headers=headers, timeout=HTTP_TIMEOUT, stream=True)
+                    resp = requests.get(
+                        src.url, headers=headers, timeout=HTTP_TIMEOUT, stream=True
+                    )
                 resp.raise_for_status()
-                mark_source_success(conn, src["name"])
+                mark_source_success(conn, src.name)
                 counts["ok"] += 1
             except Exception as exc:  # noqa: BLE001
-                mark_source_error(conn, src["name"], str(exc))
+                mark_source_error(conn, src.name, str(exc))
                 counts["errors"] += 1
     return counts

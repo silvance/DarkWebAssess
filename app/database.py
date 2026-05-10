@@ -212,7 +212,8 @@ CREATE TABLE IF NOT EXISTS users (
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     last_login_at TEXT,
-    failed_logins INTEGER NOT NULL DEFAULT 0
+    failed_logins INTEGER NOT NULL DEFAULT 0,
+    last_failed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
@@ -269,23 +270,48 @@ def _resolve_db_path(db_path):
 def get_connection(db_path=None) -> sqlite3.Connection:
     path = _resolve_db_path(db_path)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # `:memory:` and other special paths shouldn't get a 5-second wait; only
+    # set busy_timeout for real on-disk DBs where we expect concurrent access.
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Concurrent dashboard + scheduler access needs WAL so readers don't
+    # block writers and vice versa. NORMAL sync trades a tiny durability
+    # window on power loss for materially better throughput.
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.OperationalError:
+        # Some build configurations (e.g. tmpfs without certain flags) may
+        # reject WAL — fall back silently rather than fail to open the DB.
+        pass
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Add columns / FTS index / triggers introduced after the initial schema."""
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(matches)")}
+    match_cols = {r["name"] for r in conn.execute("PRAGMA table_info(matches)")}
     for name, ddl in (
         ("score", "ALTER TABLE matches ADD COLUMN score INTEGER"),
         ("score_reasons", "ALTER TABLE matches ADD COLUMN score_reasons TEXT"),
         ("score_updated_at", "ALTER TABLE matches ADD COLUMN score_updated_at TEXT"),
     ):
-        if name not in cols:
+        if name not in match_cols:
             conn.execute(ddl)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_score ON matches(score)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_value ON matches(matched_value)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_entities_doc_type ON entities(document_id, entity_type)"
+    )
+
+    # Phase-14 hardening: lockout requires a last_failed_at column.
+    try:
+        user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+        if user_cols and "last_failed_at" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN last_failed_at TEXT")
+    except sqlite3.OperationalError as exc:
+        log.warning("users-table migration skipped: %s", exc)
 
     # FTS5 + triggers (best-effort — sqlite without FTS5 just disables search).
     try:

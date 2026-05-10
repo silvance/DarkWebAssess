@@ -160,9 +160,24 @@ def page_matches():
 
         new_status = st.selectbox("New status", statuses)
         if st.button("Update"):
+            from app.auth.audit import record_audit
+            actor = (_user or {}).get("username")
             with _conn() as conn:
+                prev = conn.execute(
+                    "SELECT status FROM matches WHERE id = ?", (int(match_id),)
+                ).fetchone()
                 conn.execute(
-                    "UPDATE matches SET status = ? WHERE id = ?", (new_status, int(match_id))
+                    "UPDATE matches SET status = ? WHERE id = ?",
+                    (new_status, int(match_id)),
+                )
+                record_audit(
+                    conn, action="match_status_changed", actor=actor,
+                    actor_role=(_user or {}).get("role"),
+                    target_type="match", target_id=str(match_id),
+                    payload={
+                        "from": prev["status"] if prev else None,
+                        "to": new_status,
+                    },
                 )
                 conn.commit()
             st.success(f"Updated match {int(match_id)} to {new_status}")
@@ -225,8 +240,18 @@ def page_matches():
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Cases module not importable: {exc}")
             else:
+                actor = case_owner or (_user or {}).get("username")
                 with _conn() as conn:
-                    cid = create_case_from_match(conn, int(match_id), owner=case_owner or None)
+                    cid = create_case_from_match(conn, int(match_id), owner=actor)
+                    if cid is not None:
+                        from app.auth.audit import record_audit
+                        record_audit(
+                            conn, action="case_created_from_match",
+                            actor=(_user or {}).get("username"),
+                            actor_role=(_user or {}).get("role"),
+                            target_type="case", target_id=str(cid),
+                            payload={"match_id": int(match_id), "owner": actor},
+                        )
                     conn.commit()
                 if cid is None:
                     st.error("Match not found.")
@@ -555,8 +580,9 @@ def page_cases():
         new_status = st.selectbox("Status", list(VALID_STATUSES),
                                   index=list(VALID_STATUSES).index(case["status"]))
         if st.button("Update status"):
+            actor = (_user or {}).get("username") or "dashboard"
             with _conn() as conn:
-                update_case_status(conn, int(case_id), new_status, actor="dashboard")
+                update_case_status(conn, int(case_id), new_status, actor=actor)
                 conn.commit()
             st.rerun()
     with cols[1]:
@@ -564,8 +590,9 @@ def page_cases():
         note_author = st.text_input("Author", key=f"note_author_{case_id}")
         if st.button("Append note"):
             if note_body.strip():
+                actor = note_author or (_user or {}).get("username")
                 with _conn() as conn:
-                    add_note(conn, int(case_id), note_body, author=note_author or None)
+                    add_note(conn, int(case_id), note_body, author=actor)
                     conn.commit()
                 st.rerun()
     with cols[2]:
@@ -641,10 +668,20 @@ def page_reports():
     if chosen:
         st.caption(description_map.get(chosen, ""))
     if gen:
+        from app.auth.audit import record_audit
         with _conn() as conn:
             report = generate_report(conn, chosen, window=window or None)
-            if save:
-                save_report(conn, report)
+            saved_id = save_report(conn, report) if save else None
+            record_audit(
+                conn,
+                action="report_generated",
+                actor=(_user or {}).get("username"),
+                actor_role=(_user or {}).get("role"),
+                target_type="report",
+                target_id=str(saved_id) if saved_id else chosen,
+                payload={"template": chosen, "window": window, "saved": save},
+            )
+            conn.commit()
         if fmt == "markdown":
             md = render_markdown(report)
             st.markdown(md)
@@ -687,6 +724,7 @@ def page_admin():
     """Admin-only: user management + audit log + provider key presence."""
     require_role(_user, "admin")
     from app.auth.audit import list_audit
+    from app.auth.passwords import WeakPasswordError
     from app.auth.users import (
         create_user, delete_user, list_users, set_enabled,
         set_password, set_role,
@@ -717,6 +755,8 @@ def page_admin():
                         conn.commit()
                     st.success(f"Created {u_name}.")
                     st.rerun()
+                except WeakPasswordError as exc:
+                    st.error(str(exc))
                 except ValueError as exc:
                     st.error(str(exc))
 
@@ -753,10 +793,14 @@ def page_admin():
 
             new_pw = st.text_input("Reset password", type="password", key="reset_pw")
             if st.button("Set password") and new_pw:
-                with _conn() as conn:
-                    set_password(conn, target, new_pw, actor=actor)
-                    conn.commit()
-                st.success("Password updated.")
+                try:
+                    with _conn() as conn:
+                        set_password(conn, target, new_pw, actor=actor)
+                        conn.commit()
+                except WeakPasswordError as exc:
+                    st.error(str(exc))
+                else:
+                    st.success("Password updated.")
 
     st.markdown("---")
     st.subheader("Provider keys (presence only)")

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app import database as dbm
-from app import main as app_main
+from app import pipeline as app_pipeline
 from app.database import get_connection, init_db
 from app.jobs import runner as job_runner
 
@@ -52,20 +52,20 @@ def _utc_iso(offset_minutes: int) -> str:
 
 
 def test_backoff_zero_errors_no_skip():
-    assert app_main._backoff_until(0, _utc_iso(-1)) is None
+    assert app_pipeline.backoff_until(0, _utc_iso(-1)) is None
 
 
 def test_backoff_grows_with_errors():
     # 1 error → 5 * 2^1 = 10 minutes after the last attempt.
-    until = app_main._backoff_until(1, _utc_iso(-5))  # 5 minutes ago
+    until = app_pipeline.backoff_until(1, _utc_iso(-5))  # 5 minutes ago
     assert until is not None
     # 5m ago + 10m backoff = 5m in the future.
     assert until > datetime.now(timezone.utc)
 
 
 def test_backoff_is_capped():
-    until_small = app_main._backoff_until(3, _utc_iso(0))
-    until_huge = app_main._backoff_until(99, _utc_iso(0))
+    until_small = app_pipeline.backoff_until(3, _utc_iso(0))
+    until_huge = app_pipeline.backoff_until(99, _utc_iso(0))
     # 99 errors should be capped at exponent 6 → 5 * 2^6 = 320 minutes.
     assert until_huge is not None and until_small is not None
     assert (until_huge - until_small).total_seconds() <= 320 * 60

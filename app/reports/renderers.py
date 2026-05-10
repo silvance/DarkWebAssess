@@ -90,7 +90,9 @@ _HTML_TAIL = "</body></html>\n"
 def _esc(value) -> str:
     if value is None:
         return ""
-    return _html.escape(str(value), quote=False)
+    # quote=True escapes both single and double quotes — defense-in-depth
+    # in case a value ever lands inside an attribute context.
+    return _html.escape(str(value), quote=True)
 
 
 def _section_to_html(s: ReportSection) -> List[str]:

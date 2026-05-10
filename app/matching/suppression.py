@@ -69,16 +69,19 @@ def _load_rules() -> List[SuppressionRule]:
     if not p.exists():
         _RULES_CACHE = []
         return _RULES_CACHE
-    with open(p, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+    # Validate via Pydantic so a typo in suppression.yaml fails loudly
+    # instead of silently dropping rules.
+    from app.config_models import load_suppression
+
+    cfg = load_suppression(str(p))
     out = []
-    for entry in data.get("suppress", []) or []:
+    for entry in cfg.suppress:
         out.append(
             SuppressionRule(
-                type=str(entry.get("type", "")).lower(),
-                value=str(entry.get("value", "")),
-                sources=tuple(entry.get("sources") or ()),
-                reason=str(entry.get("reason", "")) or "suppressed",
+                type=entry.type.lower(),
+                value=entry.value,
+                sources=tuple(entry.sources or ()),
+                reason=entry.reason or "suppressed",
             )
         )
     _RULES_CACHE = out
