@@ -2,6 +2,7 @@
 import argparse
 import logging
 
+from app import __version__
 from app.cli import (
     cmd_alerts,
     cmd_backup,
@@ -48,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="threatintel",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"mini-threat-intel {__version__}",
     )
     sub = p.add_subparsers(dest="command", required=True)
 

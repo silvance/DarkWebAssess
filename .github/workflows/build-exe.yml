@@ -64,9 +64,29 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Extract release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $changelog = Get-Content -Raw -Path CHANGELOG.md
+          # Section header looks like "## v0.1.0 — 2026-05-10".
+          # Capture from "## $tag" up to the next "## v" header (or EOF).
+          $pattern = "(?ms)^##\s+$([regex]::Escape($tag))\b.*?(?=^##\s+v\d|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if ($match.Success) {
+              $match.Value | Set-Content -Path release_notes.md -Encoding utf8
+              Write-Host "Wrote release notes for $tag from CHANGELOG.md"
+          } else {
+              "Release $tag — see CHANGELOG.md" | Set-Content -Path release_notes.md -Encoding utf8
+              Write-Warning "No CHANGELOG section found for $tag — using fallback body"
+          }
+
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_NAME }}
           fail_on_unmatched_files: true
+          body_path: release_notes.md
+          name: mini-threat-intel ${{ github.ref_name }}
