@@ -51,6 +51,11 @@ In scope for Milestone 1:
 - Optional Tor / onion collector: routes through a local SOCKS5h proxy,
   fetches only the `*.onion` URLs you explicitly configure (no crawling),
   with a Compose-profile sidecar and a `tor-check` smoke-test command.
+- Leak-listing indicator extractor: emits `leak_status` /
+  `leak_size` / `leak_deadline` entities when a document looks like a
+  ransomware-leak landing (multi-word status phrases, size-near-leak-word
+  co-occurrence, countdown / deadline lines). Gives the scorer a +10
+  boost for matches on leak-context pages.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.

@@ -227,12 +227,20 @@ def score_match(conn: sqlite3.Connection, match_row, doc_row) -> ScoreResult:
     co = _cooccurring_types(conn, match_row["document_id"])
     has_hash = any(co.get(t, 0) for t in ("md5", "sha1", "sha256"))
     has_cve = co.get("cve", 0) > 0
+    has_leak_indicator = co.get("leak_status", 0) > 0
     if has_hash and mtype not in ("exact_md5", "exact_sha1", "exact_sha256"):
         score += 5
         reasons.append("+5 file hash also present")
     if has_cve and mtype != "exact_cve":
         score += 5
         reasons.append("+5 CVE also referenced")
+    if has_leak_indicator:
+        # Leak-context pages (e.g. ransomware leak landings) make any
+        # match more interesting. Stronger signal than a co-occurring CVE
+        # because leak_status is filtered to multi-word phrases that
+        # don't fire on news prose.
+        score += 10
+        reasons.append("+10 leak-site indicators present")
 
     # --- Multi-source corroboration
     sources = _distinct_source_count(conn, matched_value)

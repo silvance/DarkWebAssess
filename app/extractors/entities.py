@@ -207,6 +207,7 @@ def extract_all(text: str) -> List[dict]:
         return []
     # Lazy imports avoid a circular path during early app startup.
     from app.extractors.handles import extract_handles
+    from app.extractors.leak_listings import extract_leak_indicators
     from app.extractors.named_entities import extract_named_entities
     from app.extractors.onion import extract_onions
     from app.extractors.wallets import extract_wallets
@@ -224,6 +225,7 @@ def extract_all(text: str) -> List[dict]:
     results.extend(extract_cves(cleaned))
     results.extend(extract_handles(cleaned))
     results.extend(extract_named_entities(cleaned))
+    results.extend(extract_leak_indicators(cleaned))
 
     # De-dupe on (type, value), keep first context.
     seen = set()

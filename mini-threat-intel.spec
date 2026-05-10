@@ -80,6 +80,7 @@ hiddenimports += [
     "app.collectors.rss_collector",
     "app.extractors.entities",
     "app.extractors.handles",
+    "app.extractors.leak_listings",
     "app.extractors.named_entities",
     "app.extractors.onion",
     "app.extractors.wallets",
