@@ -44,3 +44,8 @@ SOURCE_HEALTH_INTERVAL_HOURS = int(os.getenv("SOURCE_HEALTH_INTERVAL_HOURS", "12
 # (capped at 2^6 * 5 = 320 minutes ~= 5h20m).
 SOURCE_BACKOFF_BASE_MINUTES = int(os.getenv("SOURCE_BACKOFF_BASE_MINUTES", "5"))
 SOURCE_BACKOFF_MAX_EXPONENT = int(os.getenv("SOURCE_BACKOFF_MAX_EXPONENT", "6"))
+
+# Phase 11 LLM summaries.
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-opus-4-7")
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
+LLM_DOC_TEXT_CHARS = int(os.getenv("LLM_DOC_TEXT_CHARS", "12000"))

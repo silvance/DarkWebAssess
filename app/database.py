@@ -116,6 +116,27 @@ CREATE TABLE IF NOT EXISTS job_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_job_runs_name ON job_runs(job_name);
 CREATE INDEX IF NOT EXISTS idx_job_runs_started ON job_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS llm_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    entities_json TEXT,
+    why_it_matters TEXT,
+    confidence TEXT,
+    confidence_explanation TEXT,
+    next_steps_json TEXT,
+    unknowns_json TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_input_tokens INTEGER,
+    cache_creation_input_tokens INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE(match_id, model),
+    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_llm_summaries_match ON llm_summaries(match_id);
 """
 
 FTS_SCHEMA = """

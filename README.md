@@ -31,6 +31,9 @@ In scope for Milestone 1:
   with per-source exponential backoff and a `job_runs` history table.
 - SQLite FTS5 full-text search over collected documents with snippets,
   source/date filters, and CSV / JSON export.
+- LLM analyst summaries via the Anthropic SDK (default `claude-opus-4-7`)
+  with structured output (Pydantic), cached system prompt, and a per-match
+  panel in the dashboard.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -52,6 +55,7 @@ app/
   enrichment/                   # CISA KEV, EPSS, URLhaus, MalwareBazaar, VT, AbuseIPDB
   jobs/                         # APScheduler scheduler + record_run wrapper
   search.py                     # FTS5 query helpers
+  llm/                          # Claude API summarizer (prompts, schema, runner)
   alerts/telegram.py
   ui/streamlit_app.py
   config.py
@@ -101,6 +105,9 @@ python -m app.main scheduler --run-now         # also fire every job once on sta
 python -m app.main search "lockbit ransomware" # FTS5 search
 python -m app.main search "lock*" --source "Krebs on Security" --limit 10
 python -m app.main reindex                     # rebuild the FTS index
+python -m app.main summarize --match-id 42     # generate analyst summary for one match
+python -m app.main summarize --top 10          # summarize top-10 unscored open matches
+python -m app.main summarize --all-new --force # regenerate everything
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -136,6 +143,9 @@ Environment variables (see `.env.example`):
 - `SOURCE_BACKOFF_BASE_MINUTES` (5), `SOURCE_BACKOFF_MAX_EXPONENT` (6) — when a
   source errors, the next attempt is delayed by `BASE * 2^min(error_count, MAX)`
   minutes
+- `ANTHROPIC_API_KEY` — required for `summarize`; provider self-skips otherwise
+- `LLM_MODEL` (default `claude-opus-4-7`), `LLM_MAX_TOKENS` (2048),
+  `LLM_DOC_TEXT_CHARS` (12000) — knobs for analyst summarization
 
 ## Tests
 
@@ -146,9 +156,9 @@ pytest -q
 
 ## Status
 
-Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), and 9
-(full-text search) of the larger phased plan. See *Roadmap* for what comes
-next.
+Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
+search), and 11 (LLM analyst summaries) of the larger phased plan. See
+*Roadmap* for what comes next.
 
 ## Roadmap
 
