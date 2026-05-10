@@ -25,6 +25,11 @@ from app.config import (
 )
 from app.collectors.rss_collector import collect_rss
 from app.database import db_cursor, init_db
+from app.enrichment.runner import (
+    default_providers,
+    enrich_entity,
+    iter_distinct_entities,
+)
 from app.extractors.entities import extract_all
 from app.matching.watchlist_matcher import match_document
 from app.repository import (
@@ -206,6 +211,50 @@ def cmd_match(_args):
     print(f"Created {total} new matches.")
 
 
+def cmd_enrich(args):
+    providers = default_providers()
+    configured = [p for p in providers if p.is_configured()]
+    skipped = [p.name for p in providers if not p.is_configured()]
+    if skipped:
+        log.info("Skipping unconfigured providers: %s", ", ".join(skipped))
+    if not configured:
+        print("No enrichment providers are configured.")
+        return
+
+    targets = []
+    if args.value and args.type:
+        targets = [(args.type, args.value)]
+    else:
+        with db_cursor() as conn:
+            types = [args.type] if args.type else None
+            targets = iter_distinct_entities(conn, entity_types=types, limit=args.limit)
+        if not targets:
+            print("No entities to enrich.")
+            return
+
+    totals = {"hits": 0, "cached": 0, "errors": 0, "skipped": 0}
+    with db_cursor() as conn:
+        for etype, evalue in targets:
+            outcomes = enrich_entity(
+                conn, etype, evalue, providers=configured, force=args.force
+            )
+            if not outcomes:
+                totals["skipped"] += 1
+                continue
+            for o in outcomes:
+                if o.cached:
+                    totals["cached"] += 1
+                elif o.success:
+                    totals["hits"] += 1
+                else:
+                    totals["errors"] += 1
+    print(
+        "Enrichment done. "
+        f"targets={len(targets)} hits={totals['hits']} cached={totals['cached']} "
+        f"errors={totals['errors']} skipped={totals['skipped']}"
+    )
+
+
 def cmd_alert_test(_args):
     if not is_configured():
         print("Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.")
@@ -229,6 +278,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("extract", help="Re-run extraction over stored docs.").set_defaults(func=cmd_extract)
     sub.add_parser("match", help="Re-run watchlist matching over stored docs.").set_defaults(func=cmd_match)
+
+    pe = sub.add_parser("enrich", help="Run enrichment providers over stored entities.")
+    pe.add_argument("--type", help="Restrict to one entity type (cve, domain, ip, url, md5, sha1, sha256).")
+    pe.add_argument("--value", help="Enrich a single entity value (requires --type).")
+    pe.add_argument("--limit", type=int, help="Cap the number of entities processed.")
+    pe.add_argument("--force", action="store_true", help="Bypass cache freshness check.")
+    pe.set_defaults(func=cmd_enrich)
+
     sub.add_parser("alert-test", help="Send a test Telegram alert.").set_defaults(func=cmd_alert_test)
 
     return p

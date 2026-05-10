@@ -168,3 +168,65 @@ def record_alert(
         """,
         (match_id, channel, utcnow_iso(), int(success), error),
     )
+
+
+# --- Enrichments ----------------------------------------------------------
+import json  # noqa: E402
+
+
+def get_enrichment(
+    conn: sqlite3.Connection, entity_type: str, entity_value: str, provider: str
+):
+    return conn.execute(
+        """
+        SELECT id, entity_type, entity_value, provider, enriched_at, success,
+               result_json, error
+        FROM enrichments
+        WHERE entity_type = ? AND entity_value = ? AND provider = ?
+        """,
+        (entity_type, entity_value, provider),
+    ).fetchone()
+
+
+def upsert_enrichment(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_value: str,
+    provider: str,
+    success: bool,
+    result: Optional[dict],
+    error: Optional[str] = None,
+) -> int:
+    payload = json.dumps(result) if result is not None else None
+    conn.execute(
+        """
+        INSERT INTO enrichments (
+            entity_type, entity_value, provider, enriched_at, success,
+            result_json, error
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(entity_type, entity_value, provider) DO UPDATE SET
+            enriched_at = excluded.enriched_at,
+            success = excluded.success,
+            result_json = excluded.result_json,
+            error = excluded.error
+        """,
+        (entity_type, entity_value, provider, utcnow_iso(), int(success), payload, error),
+    )
+    row = conn.execute(
+        "SELECT id FROM enrichments WHERE entity_type = ? AND entity_value = ? AND provider = ?",
+        (entity_type, entity_value, provider),
+    ).fetchone()
+    return row["id"]
+
+
+def list_enrichments(conn: sqlite3.Connection, entity_type: str, entity_value: str):
+    return conn.execute(
+        """
+        SELECT id, provider, enriched_at, success, result_json, error
+        FROM enrichments
+        WHERE entity_type = ? AND entity_value = ?
+        ORDER BY enriched_at DESC
+        """,
+        (entity_type, entity_value),
+    ).fetchall()

@@ -185,11 +185,68 @@ def page_sources():
     st.dataframe(df, use_container_width=True)
 
 
+def page_enrichment():
+    import json as _json
+
+    st.title("Enrichment")
+    st.caption(
+        "Enrichment results from providers (CISA KEV, EPSS, URLhaus, MalwareBazaar, VirusTotal, AbuseIPDB)."
+    )
+
+    summary = _query(
+        """
+        SELECT provider,
+               COUNT(*) AS total,
+               SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful,
+               MAX(enriched_at) AS last_run
+        FROM enrichments
+        GROUP BY provider
+        ORDER BY provider
+        """
+    )
+    st.subheader("Provider activity")
+    st.dataframe(summary, use_container_width=True)
+
+    st.subheader("Lookup an entity")
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        etype = st.selectbox(
+            "Entity type",
+            ["cve", "domain", "ip", "url", "md5", "sha1", "sha256"],
+        )
+    with col2:
+        evalue = st.text_input("Entity value")
+    if evalue:
+        rows = _query(
+            """
+            SELECT provider, enriched_at, success, result_json, error
+            FROM enrichments
+            WHERE entity_type = ? AND entity_value = ?
+            ORDER BY enriched_at DESC
+            """,
+            (etype, evalue),
+        )
+        if rows.empty:
+            st.info("No enrichment recorded yet. Try `python -m app.main enrich --type %s --value %s`." % (etype, evalue))
+        else:
+            for _, r in rows.iterrows():
+                badge = "OK" if r["success"] else "ERR"
+                with st.expander(f"[{badge}] {r['provider']} — {r['enriched_at']}"):
+                    if not r["success"]:
+                        st.error(r["error"] or "(no error message)")
+                        continue
+                    try:
+                        st.json(_json.loads(r["result_json"] or "{}"))
+                    except (TypeError, ValueError):
+                        st.code(r["result_json"] or "")
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
     "Documents": page_documents,
     "Entities": page_entities,
+    "Enrichment": page_enrichment,
     "Sources": page_sources,
 }
 

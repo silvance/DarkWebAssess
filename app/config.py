@@ -20,3 +20,11 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 ALERT_MIN_SEVERITY = os.getenv("ALERT_MIN_SEVERITY", "high").lower()
+
+# Enrichment provider API keys (all optional — providers self-skip if missing).
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY", "")
+ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY", "")
+ABUSECH_AUTH_KEY = os.getenv("ABUSECH_AUTH_KEY", "")  # URLhaus / MalwareBazaar
+
+# Re-enrich an entity at most this often per provider.
+ENRICHMENT_MAX_AGE_HOURS = int(os.getenv("ENRICHMENT_MAX_AGE_HOURS", "168"))

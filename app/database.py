@@ -83,6 +83,20 @@ CREATE TABLE IF NOT EXISTS alerts (
     error TEXT,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS enrichments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_value TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    enriched_at TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    result_json TEXT,
+    error TEXT,
+    UNIQUE(entity_type, entity_value, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_enrichments_value ON enrichments(entity_type, entity_value);
+CREATE INDEX IF NOT EXISTS idx_enrichments_provider ON enrichments(provider);
 """
 
 
