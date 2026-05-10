@@ -203,6 +203,23 @@ def page_matches():
         else:
             st.info("No analyst summary yet for this match.")
 
+        st.markdown("---")
+        st.subheader("Case")
+        case_owner = st.text_input("Owner (optional)", key="match_to_case_owner")
+        if st.button("Create case from this match"):
+            try:
+                from app.cases.repository import create_case_from_match
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Cases module not importable: {exc}")
+            else:
+                with _conn() as conn:
+                    cid = create_case_from_match(conn, int(match_id), owner=case_owner or None)
+                    conn.commit()
+                if cid is None:
+                    st.error("Match not found.")
+                else:
+                    st.success(f"Created case #{cid}. Open the Cases page to continue.")
+
         regen_label = "Regenerate analyst summary" if not existing.empty else "Generate analyst summary"
         if st.button(regen_label):
             try:
@@ -441,9 +458,149 @@ def page_jobs():
     st.dataframe(recent, use_container_width=True)
 
 
+def page_cases():
+    from app.cases.exporter import export_markdown
+    from app.cases.repository import (
+        VALID_SEVERITIES,
+        VALID_STATUSES,
+        add_note,
+        attach_evidence,
+        create_case,
+        get_case_detail,
+        update_case_status,
+    )
+
+    st.title("Cases")
+
+    with st.sidebar:
+        st.header("Filters")
+        sev_filter = st.multiselect("Status", list(VALID_STATUSES),
+                                    default=["open", "reviewing", "waiting", "escalated"])
+
+    placeholders = ",".join("?" * len(sev_filter)) if sev_filter else None
+    if placeholders:
+        df = _query(
+            f"SELECT id, title, status, severity, owner, created_at, updated_at "
+            f"FROM cases WHERE status IN ({placeholders}) ORDER BY updated_at DESC LIMIT 200",
+            tuple(sev_filter),
+        )
+    else:
+        df = _query(
+            "SELECT id, title, status, severity, owner, created_at, updated_at "
+            "FROM cases ORDER BY updated_at DESC LIMIT 200"
+        )
+    st.write(f"{len(df)} cases")
+    st.dataframe(df, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Create a new case")
+    with st.form("new_case"):
+        title = st.text_input("Title")
+        severity = st.selectbox("Severity", list(VALID_SEVERITIES), index=1)
+        owner = st.text_input("Owner")
+        summary = st.text_area("Summary")
+        if st.form_submit_button("Create"):
+            if not title:
+                st.error("Title is required.")
+            else:
+                with _conn() as conn:
+                    cid = create_case(conn, title=title, severity=severity,
+                                      owner=owner or None, summary=summary or None)
+                    conn.commit()
+                st.success(f"Created case #{cid}.")
+                st.rerun()
+
+    if df.empty:
+        return
+
+    st.markdown("---")
+    st.subheader("Case detail")
+    case_id = st.number_input(
+        "Case ID",
+        min_value=int(df["id"].min()),
+        max_value=int(df["id"].max()),
+        step=1,
+    )
+    with _conn() as conn:
+        case = get_case_detail(conn, int(case_id))
+    if not case:
+        st.error("Case not found.")
+        return
+
+    st.markdown(
+        f"### Case #{case['id']} — {case['title']}\n"
+        f"`{case['status']}` · `{case['severity']}` · "
+        f"owner: {case['owner'] or '—'} · "
+        f"created {case['created_at']} · updated {case['updated_at']}"
+    )
+    if case.get("summary"):
+        st.markdown("**Summary**")
+        st.markdown(case["summary"])
+
+    cols = st.columns(3)
+    with cols[0]:
+        new_status = st.selectbox("Status", list(VALID_STATUSES),
+                                  index=list(VALID_STATUSES).index(case["status"]))
+        if st.button("Update status"):
+            with _conn() as conn:
+                update_case_status(conn, int(case_id), new_status, actor="dashboard")
+                conn.commit()
+            st.rerun()
+    with cols[1]:
+        note_body = st.text_area("Add note")
+        note_author = st.text_input("Author", key=f"note_author_{case_id}")
+        if st.button("Append note"):
+            if note_body.strip():
+                with _conn() as conn:
+                    add_note(conn, int(case_id), note_body, author=note_author or None)
+                    conn.commit()
+                st.rerun()
+    with cols[2]:
+        if st.button("Export markdown"):
+            with _conn() as conn:
+                md = export_markdown(conn, int(case_id))
+            if md:
+                st.download_button(
+                    "Download report.md",
+                    md.encode("utf-8"),
+                    file_name=f"case-{case_id}.md",
+                    mime="text/markdown",
+                )
+
+    st.markdown("**Evidence**")
+    if case["evidence"]:
+        ev_df = pd.DataFrame(case["evidence"])
+        st.dataframe(ev_df[["id", "kind", "ref", "label", "added_at"]], use_container_width=True)
+    else:
+        st.caption("No evidence attached yet.")
+
+    with st.expander("Attach text evidence"):
+        text_label = st.text_input("Label", key=f"ev_label_{case_id}")
+        text_body = st.text_area("Body", key=f"ev_body_{case_id}")
+        if st.button("Attach text", key=f"ev_btn_{case_id}"):
+            if text_body.strip():
+                with _conn() as conn:
+                    attach_evidence(conn, int(case_id), "text",
+                                    label=text_label or None, body=text_body)
+                    conn.commit()
+                st.rerun()
+
+    st.markdown("**Notes**")
+    for n in case["notes"]:
+        st.markdown(f"_{n['created_at']} — {n['author'] or 'anonymous'}_")
+        st.markdown(n["body"])
+
+    st.markdown("**Timeline**")
+    for ev in case["events"]:
+        payload = ev.get("payload") or {}
+        bits = ", ".join(f"{k}={v}" for k, v in payload.items()) if payload else ""
+        st.markdown(f"- `{ev['created_at']}` **{ev['event_type']}** by {ev['actor'] or 'system'} {bits}")
+
+
 PAGES = {
     "Overview": page_overview,
     "Matches": page_matches,
+    "Cases": page_cases,
     "Search": page_search,
     "Documents": page_documents,
     "Entities": page_entities,

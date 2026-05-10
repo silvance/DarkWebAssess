@@ -137,6 +137,55 @@ CREATE TABLE IF NOT EXISTS llm_summaries (
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_llm_summaries_match ON llm_summaries(match_id);
+
+CREATE TABLE IF NOT EXISTS cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    summary TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    owner TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_updated ON cases(updated_at);
+
+CREATE TABLE IF NOT EXISTS case_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT,
+    label TEXT,
+    body TEXT,
+    added_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_case_evidence_case ON case_evidence(case_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_case_evidence_unique
+    ON case_evidence(case_id, kind, ref) WHERE ref IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS case_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL,
+    author TEXT,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_case_notes_case ON case_notes(case_id);
+
+CREATE TABLE IF NOT EXISTS case_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    actor TEXT,
+    payload_json TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_case_events_case ON case_events(case_id, created_at);
 """
 
 FTS_SCHEMA = """

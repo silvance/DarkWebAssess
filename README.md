@@ -34,6 +34,10 @@ In scope for Milestone 1:
 - LLM analyst summaries via the Anthropic SDK (default `claude-opus-4-7`)
   with structured output (Pydantic), cached system prompt, and a per-match
   panel in the dashboard.
+- Case management: turn a match into an investigation, attach evidence
+  (matches / documents / entities / enrichments / summaries / free-form
+  notes), capture a status timeline, export a self-contained markdown
+  report.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -56,6 +60,7 @@ app/
   jobs/                         # APScheduler scheduler + record_run wrapper
   search.py                     # FTS5 query helpers
   llm/                          # Claude API summarizer (prompts, schema, runner)
+  cases/                        # case repository + markdown exporter
   alerts/telegram.py
   ui/streamlit_app.py
   config.py
@@ -108,6 +113,13 @@ python -m app.main reindex                     # rebuild the FTS index
 python -m app.main summarize --match-id 42     # generate analyst summary for one match
 python -m app.main summarize --top 10          # summarize top-10 unscored open matches
 python -m app.main summarize --all-new --force # regenerate everything
+python -m app.main case create --from-match 42 --owner alice
+python -m app.main case list --status open
+python -m app.main case show 1
+python -m app.main case note 1 --body "Looks tied to recent leak claim"
+python -m app.main case attach 1 --enrichment 7
+python -m app.main case status 1 --to confirmed
+python -m app.main case export 1 --output report.md
 python -m app.main alert-test     # send a test Telegram alert
 ```
 
@@ -157,8 +169,8 @@ pytest -q
 ## Status
 
 Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
-search), and 11 (LLM analyst summaries) of the larger phased plan. See
-*Roadmap* for what comes next.
+search), 11 (LLM analyst summaries), and 12 (case management) of the larger
+phased plan. See *Roadmap* for what comes next.
 
 ## Roadmap
 
