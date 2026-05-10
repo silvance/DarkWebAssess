@@ -28,3 +28,9 @@ ABUSECH_AUTH_KEY = os.getenv("ABUSECH_AUTH_KEY", "")  # URLhaus / MalwareBazaar
 
 # Re-enrich an entity at most this often per provider.
 ENRICHMENT_MAX_AGE_HOURS = int(os.getenv("ENRICHMENT_MAX_AGE_HOURS", "168"))
+
+# Phase 6 scoring.
+SUPPRESSION_PATH = os.getenv("SUPPRESSION_PATH", str(ROOT / "suppression.yaml"))
+# Optional alternate gate for Telegram alerts. When set, alerts fire if the
+# match score is at or above this value (in addition to the severity gate).
+ALERT_MIN_SCORE = int(os.getenv("ALERT_MIN_SCORE", "0"))

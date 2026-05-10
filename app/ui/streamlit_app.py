@@ -32,17 +32,35 @@ def _query(sql: str, params: tuple = ()) -> pd.DataFrame:
 def page_overview():
     st.title("Mini Threat Intelligence — Overview")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     docs = _query("SELECT COUNT(*) AS n FROM documents")["n"].iloc[0]
     entities = _query("SELECT COUNT(*) AS n FROM entities")["n"].iloc[0]
     matches = _query("SELECT COUNT(*) AS n FROM matches")["n"].iloc[0]
     new_high = _query(
         "SELECT COUNT(*) AS n FROM matches WHERE status='new' AND severity IN ('high','critical')"
     )["n"].iloc[0]
+    top_score = _query("SELECT COALESCE(MAX(score), 0) AS n FROM matches WHERE status='new'")[
+        "n"
+    ].iloc[0]
     c1.metric("Documents", int(docs))
     c2.metric("Entities", int(entities))
     c3.metric("Matches", int(matches))
     c4.metric("New high/critical", int(new_high))
+    c5.metric("Top open score", int(top_score))
+
+    st.subheader("Top scored open matches")
+    top = _query(
+        """
+        SELECT m.id, m.score, m.severity, m.matched_value, m.match_type,
+               d.source_name, d.title
+        FROM matches m
+        JOIN documents d ON d.id = m.document_id
+        WHERE m.status IN ('new', 'reviewing')
+        ORDER BY COALESCE(m.score, -1) DESC, m.created_at DESC
+        LIMIT 10
+        """
+    )
+    st.dataframe(top, use_container_width=True)
 
     st.subheader("Recently collected documents")
     recent = _query(
@@ -57,20 +75,26 @@ def page_overview():
 
 
 def page_matches():
+    import json as _json
+
     st.title("Watchlist Matches")
 
     severities = ["low", "medium", "high", "critical"]
     statuses = ["new", "reviewing", "false_positive", "confirmed", "escalated"]
+    sort_options = ["score (desc)", "created_at (desc)"]
 
     with st.sidebar:
         st.header("Filters")
         sev_filter = st.multiselect("Severity", severities, default=["high", "critical"])
         status_filter = st.multiselect("Status", statuses, default=["new", "reviewing"])
+        min_score = st.slider("Min score", 0, 100, 0, 5)
+        sort_by = st.selectbox("Sort", sort_options)
         search = st.text_input("Search matched value/context")
 
     sql = """
-        SELECT m.id, m.created_at, m.severity, m.status, m.match_type,
-               m.matched_value, m.context, d.title, d.source_name, d.source_url
+        SELECT m.id, m.created_at, m.score, m.severity, m.status, m.match_type,
+               m.matched_value, m.context, m.score_reasons,
+               d.title, d.source_name, d.source_url
         FROM matches m
         JOIN documents d ON d.id = m.document_id
         WHERE 1=1
@@ -84,21 +108,43 @@ def page_matches():
         placeholders = ",".join("?" * len(status_filter))
         sql += f" AND m.status IN ({placeholders})"
         params.extend(status_filter)
+    if min_score > 0:
+        sql += " AND COALESCE(m.score, 0) >= ?"
+        params.append(int(min_score))
     if search:
         sql += " AND (m.matched_value LIKE ? OR m.context LIKE ?)"
         like = f"%{search}%"
         params.extend([like, like])
-    sql += " ORDER BY m.created_at DESC LIMIT 500"
+    if sort_by.startswith("score"):
+        sql += " ORDER BY COALESCE(m.score, -1) DESC, m.created_at DESC"
+    else:
+        sql += " ORDER BY m.created_at DESC"
+    sql += " LIMIT 500"
 
     df = _query(sql, tuple(params))
     st.write(f"{len(df)} matches")
-    st.dataframe(df, use_container_width=True)
 
-    st.subheader("Update match status")
+    table_cols = [c for c in df.columns if c != "score_reasons"]
+    st.dataframe(df[table_cols], use_container_width=True)
+
+    st.subheader("Inspect match")
     if not df.empty:
         match_id = st.number_input(
             "Match ID", min_value=int(df["id"].min()), max_value=int(df["id"].max()), step=1
         )
+        row = df[df["id"] == int(match_id)]
+        if not row.empty:
+            r = row.iloc[0]
+            st.write(f"**Score:** {r['score']}  |  **Severity:** {r['severity']}  |  **Status:** {r['status']}")
+            try:
+                reasons = _json.loads(r["score_reasons"]) if r["score_reasons"] else []
+            except (TypeError, ValueError):
+                reasons = []
+            if reasons:
+                st.markdown("**Why this score:**")
+                for line in reasons:
+                    st.markdown(f"- {line}")
+
         new_status = st.selectbox("New status", statuses)
         if st.button("Update"):
             with _conn() as conn:

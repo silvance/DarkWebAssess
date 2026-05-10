@@ -31,6 +31,7 @@ from app.enrichment.runner import (
     iter_distinct_entities,
 )
 from app.extractors.entities import extract_all
+from app.matching.scoring import score_and_persist
 from app.matching.watchlist_matcher import match_document
 from app.repository import (
     insert_document,
@@ -74,6 +75,18 @@ def _severity_ge_min(severity: str) -> bool:
     )
 
 
+def _should_alert(severity: str, score) -> bool:
+    """Alert iff severity meets the floor AND, if a score threshold is set,
+    the score meets it too."""
+    if not _severity_ge_min(severity):
+        return False
+    from app.config import ALERT_MIN_SCORE  # imported lazily to allow env override
+
+    if ALERT_MIN_SCORE > 0 and (score is None or score < ALERT_MIN_SCORE):
+        return False
+    return True
+
+
 def _process_document(conn, doc: dict) -> dict:
     """Insert document, extract entities, run matches, send alerts.
 
@@ -110,8 +123,17 @@ def _process_document(conn, doc: dict) -> dict:
             continue
         stats["matches"] += 1
 
-        if _severity_ge_min(m.get("severity", "medium")) and is_configured():
-            text = format_alert_message(m, doc)
+        # Score the match; severity is updated to reflect priority.
+        scored = score_and_persist(conn, match_id)
+        effective_severity = scored[0].severity if scored else m.get("severity", "medium")
+        score_value = scored[0].score if scored else None
+
+        if _should_alert(effective_severity, score_value) and is_configured():
+            alert_match = dict(m)
+            alert_match["severity"] = effective_severity
+            alert_match["score"] = score_value
+            alert_match["reasons"] = scored[0].reasons if scored else []
+            text = format_alert_message(alert_match, doc)
             ok, err = send_telegram(text)
             record_alert(conn, match_id, "telegram", ok, err)
             if ok:
@@ -207,8 +229,22 @@ def cmd_match(_args):
                     severity=m.get("severity", "medium"),
                 )
                 if mid is not None:
+                    score_and_persist(conn, mid)
                     total += 1
     print(f"Created {total} new matches.")
+
+
+def cmd_score(args):
+    """(Re)score matches. By default, only matches without a score yet."""
+    where = "" if args.rescore_all else "WHERE score IS NULL"
+    with db_cursor() as conn:
+        ids = [
+            r["id"]
+            for r in conn.execute(f"SELECT id FROM matches {where} ORDER BY id").fetchall()
+        ]
+        for mid in ids:
+            score_and_persist(conn, mid)
+    print(f"Scored {len(ids)} matches.")
 
 
 def cmd_enrich(args):
@@ -278,6 +314,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("extract", help="Re-run extraction over stored docs.").set_defaults(func=cmd_extract)
     sub.add_parser("match", help="Re-run watchlist matching over stored docs.").set_defaults(func=cmd_match)
+
+    ps = sub.add_parser("score", help="(Re)score matches.")
+    ps.add_argument(
+        "--rescore-all",
+        action="store_true",
+        help="Recompute scores for every match, not just unscored ones.",
+    )
+    ps.set_defaults(func=cmd_score)
 
     pe = sub.add_parser("enrich", help="Run enrichment providers over stored entities.")
     pe.add_argument("--type", help="Restrict to one entity type (cve, domain, ip, url, md5, sha1, sha256).")

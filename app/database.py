@@ -67,12 +67,16 @@ CREATE TABLE IF NOT EXISTS matches (
     severity TEXT NOT NULL DEFAULT 'medium',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL,
+    score INTEGER,
+    score_reasons TEXT,
+    score_updated_at TEXT,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
     FOREIGN KEY (watchlist_id) REFERENCES watchlist(id) ON DELETE CASCADE,
     UNIQUE(document_id, watchlist_id, matched_value)
 );
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
 CREATE INDEX IF NOT EXISTS idx_matches_severity ON matches(severity);
+CREATE INDEX IF NOT EXISTS idx_matches_score ON matches(score);
 
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,9 +112,23 @@ def get_connection(db_path: str = DATABASE_PATH) -> sqlite3.Connection:
     return conn
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after the initial schema for existing DBs."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(matches)")}
+    for name, ddl in (
+        ("score", "ALTER TABLE matches ADD COLUMN score INTEGER"),
+        ("score_reasons", "ALTER TABLE matches ADD COLUMN score_reasons TEXT"),
+        ("score_updated_at", "ALTER TABLE matches ADD COLUMN score_updated_at TEXT"),
+    ):
+        if name not in cols:
+            conn.execute(ddl)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_score ON matches(score)")
+
+
 def init_db(db_path: str = DATABASE_PATH) -> None:
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
 
 

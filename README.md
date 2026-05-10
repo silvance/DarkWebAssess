@@ -25,6 +25,8 @@ In scope for Milestone 1:
 - Enrichment providers: CISA KEV + EPSS (no key), URLhaus + MalwareBazaar
   (abuse.ch Auth-Key), VirusTotal, AbuseIPDB. Cached results with
   configurable freshness window.
+- Rule-based scoring (0–100) with reasons, derived severity, suppression
+  rules, and false-positive feedback loop.
 
 Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
 enrichment APIs, scoring, LLM summaries, case management, authentication.
@@ -41,6 +43,8 @@ app/
   extractors/named_entities.py  # malware + actor lookup
   extractors/named_entities.yaml
   matching/watchlist_matcher.py
+  matching/scoring.py           # rule-based 0-100 priority + reasons
+  matching/suppression.py       # YAML-driven suppression rules
   enrichment/                   # CISA KEV, EPSS, URLhaus, MalwareBazaar, VT, AbuseIPDB
   alerts/telegram.py
   ui/streamlit_app.py
@@ -84,8 +88,14 @@ python -m app.main enrich                      # run enrichment for all stored e
 python -m app.main enrich --type cve           # only CVEs
 python -m app.main enrich --type cve --value CVE-2024-3400
 python -m app.main enrich --limit 50 --force   # ignore cache, cap to 50 entities
+python -m app.main score                       # score matches that have no score yet
+python -m app.main score --rescore-all         # re-run scoring across all matches
 python -m app.main alert-test     # send a test Telegram alert
 ```
+
+Scoring is also applied automatically inside `collect` and `match` for newly
+created matches, and `severity` is updated to reflect the score band:
+0-25 low, 26-50 medium, 51-75 high, 76-100 critical.
 
 ## Configuration
 
@@ -106,6 +116,9 @@ Environment variables (see `.env.example`):
   provider keys (each is optional; the corresponding provider self-skips when
   empty). CISA KEV and EPSS need no key.
 - `ENRICHMENT_MAX_AGE_HOURS` — re-enrich cache window (default 168)
+- `SUPPRESSION_PATH` — path to `suppression.yaml` (default in repo root)
+- `ALERT_MIN_SCORE` — additional score gate for Telegram alerts (default 0,
+  meaning the existing severity gate alone determines alerting)
 
 ## Tests
 
@@ -116,8 +129,8 @@ pytest -q
 
 ## Status
 
-Milestones 1, 2, and 5 (enrichment) of the larger phased plan. See *Roadmap*
-for what comes next.
+Milestones 1, 2, 5 (enrichment), and 6 (scoring) of the larger phased plan.
+See *Roadmap* for what comes next.
 
 ## Roadmap
 
