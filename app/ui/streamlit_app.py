@@ -73,7 +73,7 @@ def page_overview():
         LIMIT 10
         """
     )
-    st.dataframe(top, use_container_width=True)
+    st.dataframe(top, width="stretch")
 
     st.subheader("Recently collected documents")
     recent = _query(
@@ -84,7 +84,7 @@ def page_overview():
         LIMIT 25
         """
     )
-    st.dataframe(recent, use_container_width=True)
+    st.dataframe(recent, width="stretch")
 
 
 def page_matches():
@@ -138,7 +138,7 @@ def page_matches():
     st.write(f"{len(df)} matches")
 
     table_cols = [c for c in df.columns if c != "score_reasons"]
-    st.dataframe(df[table_cols], use_container_width=True)
+    st.dataframe(df[table_cols], width="stretch")
 
     st.subheader("Inspect match")
     if not df.empty:
@@ -299,7 +299,7 @@ def page_documents():
 
     df = _query(sql, tuple(params))
     st.write(f"{len(df)} documents")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
     if not df.empty:
         doc_id = st.number_input(
@@ -317,7 +317,7 @@ def page_documents():
                     (int(doc_id),),
                 )
                 st.subheader(f"Entities ({len(ents)})")
-                st.dataframe(ents, use_container_width=True)
+                st.dataframe(ents, width="stretch")
 
 
 def page_entities():
@@ -345,7 +345,7 @@ def page_entities():
     sql += " GROUP BY entity_type, entity_value ORDER BY sightings DESC LIMIT 500"
     df = _query(sql, tuple(params))
     st.write(f"{len(df)} entities")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
 
 def page_sources():
@@ -353,7 +353,7 @@ def page_sources():
     df = _query(
         "SELECT name, type, url, enabled, last_checked_at, last_success_at, last_error, error_count FROM sources ORDER BY name"
     )
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
 
 def page_enrichment():
@@ -376,7 +376,7 @@ def page_enrichment():
         """
     )
     st.subheader("Provider activity")
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary, width="stretch")
 
     st.subheader("Lookup an entity")
     col1, col2 = st.columns([1, 3])
@@ -451,7 +451,7 @@ def page_search():
     if results:
         df = pd.DataFrame(results)
         st.dataframe(df[["retrieved_at", "source_name", "title", "snippet", "source_url"]],
-                     use_container_width=True)
+                     width="stretch")
         st.download_button(
             "Download CSV",
             df.to_csv(index=False).encode("utf-8"),
@@ -482,7 +482,7 @@ def page_jobs():
         """
     )
     st.subheader("Per-job summary")
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary, width="stretch")
 
     st.subheader("Recent runs")
     recent = _query(
@@ -493,7 +493,7 @@ def page_jobs():
         LIMIT 100
         """
     )
-    st.dataframe(recent, use_container_width=True)
+    st.dataframe(recent, width="stretch")
 
 
 def page_cases():
@@ -528,7 +528,7 @@ def page_cases():
             "FROM cases ORDER BY updated_at DESC LIMIT 200"
         )
     st.write(f"{len(df)} cases")
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
 
     st.markdown("---")
     st.subheader("Create a new case")
@@ -610,7 +610,7 @@ def page_cases():
     st.markdown("**Evidence**")
     if case["evidence"]:
         ev_df = pd.DataFrame(case["evidence"])
-        st.dataframe(ev_df[["id", "kind", "ref", "label", "added_at"]], use_container_width=True)
+        st.dataframe(ev_df[["id", "kind", "ref", "label", "added_at"]], width="stretch")
     else:
         st.caption("No evidence attached yet.")
 
@@ -702,7 +702,7 @@ def page_reports():
         "SELECT id, name, title, generated_at, window_start, window_end "
         "FROM reports ORDER BY generated_at DESC LIMIT 100"
     )
-    st.dataframe(saved, use_container_width=True)
+    st.dataframe(saved, width="stretch")
     if not saved.empty:
         rid = st.number_input("Report ID", min_value=int(saved["id"].min()),
                               max_value=int(saved["id"].max()), step=1)
@@ -737,7 +737,7 @@ def page_admin():
     st.subheader("Users")
     users = pd.DataFrame(list_users(_conn()))
     if not users.empty:
-        st.dataframe(users, use_container_width=True)
+        st.dataframe(users, width="stretch")
     else:
         st.caption("No users yet.")
 
@@ -813,14 +813,14 @@ def page_admin():
         "TELEGRAM_BOT_TOKEN",
     ]:
         key_status.append({"env_var": env_var, "set": bool(os.getenv(env_var))})
-    st.dataframe(pd.DataFrame(key_status), use_container_width=True)
+    st.dataframe(pd.DataFrame(key_status), width="stretch")
     st.caption("Values are never displayed in the dashboard.")
 
     st.markdown("---")
     st.subheader("Recent audit log")
     audit_rows = list_audit(_conn(), limit=200)
     if audit_rows:
-        st.dataframe(pd.DataFrame(audit_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(audit_rows), width="stretch")
     else:
         st.caption("No audit entries yet.")
 
@@ -889,20 +889,20 @@ def page_relationships():
     st.subheader(f"Neighbors ({len(rows)})")
     if rows:
         df = pd.DataFrame(rows)[["neighbor_type", "neighbor_value", "shared_docs", "last_seen"]]
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
     else:
         st.caption("No neighbors at the current filter / threshold.")
 
     if rows and st.checkbox("Show graph", value=True):
         max_nodes = st.slider("Nodes to draw", 5, min(50, len(rows)), value=min(20, len(rows)))
         dot = build_graphviz(etype, evalue, rows, max_nodes=max_nodes)
-        st.graphviz_chart(dot, use_container_width=True)
+        st.graphviz_chart(dot, width="stretch")
 
     st.markdown("---")
     st.subheader("Documents where this entity appears")
     docs = related_documents(_conn(), etype, evalue, limit=20)
     if docs:
-        st.dataframe(pd.DataFrame(docs), use_container_width=True)
+        st.dataframe(pd.DataFrame(docs), width="stretch")
     else:
         st.caption("No documents recorded.")
 
