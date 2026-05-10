@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.1.1 — 2026-05-10
+
+Patch release. Fixes a fatal bug that broke every dashboard page on the
+v0.1.0 .exe and silences the `use_container_width` deprecation warnings
+that drowned the console.
+
+### Fixed
+
+- **Cross-thread SQLite error** — every Streamlit page raised
+  `sqlite3.ProgrammingError: SQLite objects created in a thread can only
+  be used in that same thread`. Streamlit reruns each script execution
+  on a fresh worker thread, so the connection cached via
+  `@st.cache_resource` (and any module-level connection) was created on
+  thread A and queried from thread B. `get_connection()` now passes
+  `check_same_thread=False`. WAL mode + Python's per-connection lock
+  keep concurrent access safe for the dashboard's short-transaction
+  workload. Same fix protects the APScheduler workers in the
+  `scheduler` service.
+- **`use_container_width` deprecation** — every `st.dataframe(...)` and
+  `st.graphviz_chart(...)` call switched to `width="stretch"`, which is
+  the supported API on Streamlit ≥ 1.40. Removes ~20 deprecation
+  warnings per page render.
+
+### Added
+
+- New regression test `tests/test_thread_safety.py`: opens a connection
+  on the main thread, queries it from a worker thread (the exact
+  Streamlit pattern), and runs 8 concurrent reader threads to verify
+  the WAL + busy_timeout config doesn't deadlock.
+
+### Changed
+
+- `requirements.txt`: `streamlit>=1.30.0` → `streamlit>=1.40.0` so the
+  `width=` parameter is guaranteed to be available.
+
 ## v0.1.0 — 2026-05-10
 
 First release. The platform now covers ten phases of the original project
