@@ -1,0 +1,30 @@
+sources:
+  - name: CISA Cybersecurity Advisories
+    type: rss
+    url: https://www.cisa.gov/cybersecurity-advisories/all.xml
+    enabled: true
+
+  - name: CISA Known Exploited Vulnerabilities
+    type: rss
+    url: https://www.cisa.gov/news-events/cybersecurity-advisories/all.xml
+    enabled: false
+
+  - name: The Hacker News
+    type: rss
+    url: https://feeds.feedburner.com/TheHackersNews
+    enabled: true
+
+  - name: BleepingComputer
+    type: rss
+    url: https://www.bleepingcomputer.com/feed/
+    enabled: true
+
+  - name: Krebs on Security
+    type: rss
+    url: https://krebsonsecurity.com/feed/
+    enabled: true
+
+  - name: SANS Internet Storm Center
+    type: rss
+    url: https://isc.sans.edu/rssfeed.xml
+    enabled: true

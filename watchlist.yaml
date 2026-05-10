@@ -1,0 +1,42 @@
+watchlist:
+  - type: domain
+    value: example.com
+    description: Example primary domain
+    severity: high
+    enabled: true
+
+  - type: domain
+    value: example.mil
+    description: Example mil domain
+    severity: critical
+    enabled: true
+
+  - type: email
+    value: security@example.com
+    description: Watched VIP email
+    severity: high
+    enabled: true
+
+  - type: ip
+    value: 192.0.2.1
+    description: Example watched IP (TEST-NET)
+    severity: medium
+    enabled: true
+
+  - type: cve
+    value: CVE-2024-3400
+    description: PAN-OS GlobalProtect command injection
+    severity: critical
+    enabled: true
+
+  - type: keyword
+    value: ransomware
+    description: Generic ransomware keyword
+    severity: low
+    enabled: true
+
+  - type: keyword
+    value: zero-day
+    description: Zero-day mentions
+    severity: medium
+    enabled: true
