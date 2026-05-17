@@ -71,6 +71,7 @@ hiddenimports += [
     "app.cli.cmd_search",
     "app.cli.cmd_summarize",
     "app.cli.cmd_discover",
+    "app.cli.cmd_network",
     "app.cli.cmd_tor",
     "app.cli.cmd_users",
     # Auth + collectors + extractors + matching + enrichment + cases + reports
@@ -82,6 +83,7 @@ hiddenimports += [
     "app.collectors.onion_collector",
     "app.collectors.onion_discovery",
     "app.collectors.rss_collector",
+    "app.network.egress",
     "app.extractors.entities",
     "app.extractors.handles",
     "app.extractors.leak_listings",

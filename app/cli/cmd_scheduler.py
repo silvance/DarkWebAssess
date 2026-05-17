@@ -16,7 +16,9 @@ def register(sub):
 
 def cmd_scheduler(args):
     from app.jobs.scheduler import run_scheduler
+    from app.network.egress import preflight_or_exit
 
+    preflight_or_exit()
     try:
         run_scheduler(run_now=args.run_now)
     except (KeyboardInterrupt, SystemExit):

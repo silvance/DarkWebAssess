@@ -10,6 +10,7 @@ from app.cli import (
     cmd_collection,
     cmd_discover,
     cmd_enrich,
+    cmd_network,
     cmd_pivot,
     cmd_reports,
     cmd_scheduler,
@@ -72,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_pivot.register(sub)
     cmd_tor.register(sub)
     cmd_discover.register(sub)
+    cmd_network.register(sub)
 
     return p
 
