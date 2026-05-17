@@ -332,6 +332,29 @@ Safety properties:
   hostname, so a hostile aggregator can't sneak a clearweb URL in.
 - Response size is capped at 2 MB per page; titles are truncated to 200 chars.
 
+### Binary-content ingestion policy
+
+Every HTTP-fetching collector (onion content, onion discovery) routes
+through `app/collectors/mime_policy.py` with a strict allowlist:
+
+- **Content-Type must be one of** `text/html`, `text/plain`, `text/xml`,
+  `application/xhtml+xml`, `application/xml`, `application/rss+xml`,
+  `application/atom+xml`, `application/json`. Anything else — including
+  `application/octet-stream`, `image/*`, `video/*`, `audio/*`,
+  `application/pdf`, `application/zip`, etc. — is dropped.
+- **And** the first 1 KB of the body must look textual: no NUL bytes, no
+  known binary magic signatures (JPEG, PNG, GIF, PDF, ZIP, RAR, 7z, gzip,
+  MP4, WAV, OGG, MP3, FLAC, Matroska, PE/EXE, ELF), <5% non-printable.
+- A rejected response yields **zero** documents — no placeholder row, no
+  hex preview, nothing. The fetch is recorded in source health, but no
+  bytes ever land in the document store.
+
+The threat model is straightforward: a self-hosted threat-intel tool that
+caches arbitrary content from arbitrary onion sites can inadvertently
+store CSAM or other illegal material. Hard "textual content only" plus
+magic-byte verification means image / video / archive content is never
+written to disk, regardless of how the server labels it.
+
 ## Production deployment
 
 The repo ships a `Dockerfile` and `docker-compose.yml` that runs two

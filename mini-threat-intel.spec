@@ -78,6 +78,7 @@ hiddenimports += [
     "app.auth.middleware",
     "app.auth.passwords",
     "app.auth.users",
+    "app.collectors.mime_policy",
     "app.collectors.onion_collector",
     "app.collectors.onion_discovery",
     "app.collectors.rss_collector",

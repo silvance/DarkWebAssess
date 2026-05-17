@@ -28,6 +28,7 @@ from urllib.parse import urldefrag, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from app.collectors.mime_policy import should_ingest
 from app.collectors.onion_collector import build_tor_session
 from app.config import HTTP_TIMEOUT, ONION_REQUEST_TIMEOUT, USER_AGENT
 from app.config_models import OnionDirectoryEntry
@@ -111,12 +112,7 @@ def _fetch(directory: OnionDirectoryEntry) -> Optional[str]:
                 "discovery: %s returned HTTP %s", directory.name, resp.status_code
             )
             return None
-        ctype = (resp.headers.get("Content-Type") or "").lower()
-        if "html" not in ctype and "text" not in ctype:
-            log.info(
-                "discovery: %s served %s; skipping (need HTML)", directory.name, ctype
-            )
-            return None
+        ctype = resp.headers.get("Content-Type") or ""
         chunks: list[bytes] = []
         total = 0
         for chunk in resp.iter_content(chunk_size=65536):
@@ -131,6 +127,14 @@ def _fetch(directory: OnionDirectoryEntry) -> Optional[str]:
                 break
             chunks.append(chunk)
         body = b"".join(chunks)
+        # Same hard policy as the content collector: drop anything that
+        # isn't textual by MIME *and* magic-byte sniff.
+        ok, reason = should_ingest(ctype, body)
+        if not ok:
+            log.warning(
+                "discovery: %s refused (%s, %d bytes)", directory.name, reason, len(body)
+            )
+            return None
         return body.decode("utf-8", errors="replace")
     finally:
         resp.close()
