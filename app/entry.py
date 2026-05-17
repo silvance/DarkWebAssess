@@ -4,6 +4,7 @@ script bundled into the PyInstaller-built executable.
 Behavior
 - `mini-threat-intel.exe` (no args)         → launches the Streamlit dashboard
 - `mini-threat-intel.exe dashboard`         → same
+- `mini-threat-intel.exe tray`              → system-tray launcher (Windows)
 - `mini-threat-intel.exe collect|score|...` → forwards to the regular CLI
                                               defined in `app.main`
 
@@ -12,7 +13,11 @@ both from a normal install and from a frozen build (where the script path
 lives under sys._MEIPASS).
 """
 import os
+import socket
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 
@@ -35,9 +40,29 @@ def _resource_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _resolve_data_dir() -> Path:
+    """Pick a writable data directory.
+
+    Precedence:
+      1. $DWA_DATA_DIR (set by the installer to %APPDATA%\\DarkWebAssess)
+      2. cwd/data (portable / dev mode)
+    """
+    override = os.environ.get("DWA_DATA_DIR")
+    if override:
+        d = Path(override)
+    else:
+        d = Path(os.getcwd()) / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _ensure_runtime_paths() -> None:
     """When frozen, point YAML config + DB at user-writable directories."""
     if not _is_frozen():
+        # In dev mode we still honour DWA_DATA_DIR if set, so the installer
+        # smoke-test path works from a checkout too.
+        if os.environ.get("DWA_DATA_DIR") and "DATABASE_PATH" not in os.environ:
+            os.environ["DATABASE_PATH"] = str(_resolve_data_dir() / "threatintel.db")
         return
     # YAML configs are bundled read-only inside the exe; expose them via env so
     # config.py picks them up.
@@ -47,18 +72,34 @@ def _ensure_runtime_paths() -> None:
     os.environ.setdefault("SUPPRESSION_PATH", str(res / "suppression.yaml"))
     os.environ.setdefault("ONION_DIRECTORIES_PATH", str(res / "onion_directories.yaml"))
 
-    # The DB and any caches must live somewhere writable. Default to a
-    # per-user data dir alongside the exe (cwd is fine for a portable build).
     if "DATABASE_PATH" not in os.environ:
-        data_dir = Path(os.getcwd()) / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["DATABASE_PATH"] = str(data_dir / "threatintel.db")
+        os.environ["DATABASE_PATH"] = str(_resolve_data_dir() / "threatintel.db")
 
 
-def _run_dashboard(port: int) -> None:
+def _open_browser_when_ready(port: int, host: str = "127.0.0.1", timeout: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout
+    url = f"http://localhost:{port}/"
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                break
+        except OSError:
+            time.sleep(0.3)
+    else:
+        return
+    try:
+        webbrowser.open(url, new=2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _run_dashboard(port: int, open_browser: bool = True) -> None:
     """Launch Streamlit in-process (works from a frozen build)."""
+    if open_browser:
+        threading.Thread(
+            target=_open_browser_when_ready, args=(port,), daemon=True
+        ).start()
     script = str(_streamlit_script_path())
-    # Streamlit's CLI rewrites argv; replicate the supported pattern.
     sys.argv = ["streamlit", "run", script, "--server.port", str(port),
                 "--server.headless", "true"]
     from streamlit.web import cli as st_cli
@@ -70,7 +111,12 @@ def main(argv=None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] == "dashboard":
         port = int(os.getenv("STREAMLIT_PORT", "8501"))
-        _run_dashboard(port)
+        open_browser = "--no-browser" not in args
+        _run_dashboard(port, open_browser=open_browser)
+        return
+    if args[0] == "tray":
+        from app.ui.tray import run_tray
+        run_tray()
         return
     # Anything else: dispatch to the regular CLI defined in app.main
     from app.main import main as cli_main

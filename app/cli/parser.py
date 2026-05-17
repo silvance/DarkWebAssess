@@ -17,6 +17,7 @@ from app.cli import (
     cmd_search,
     cmd_summarize,
     cmd_tor,
+    cmd_tray,
     cmd_users,
 )
 from app.database import init_db
@@ -72,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_pivot.register(sub)
     cmd_tor.register(sub)
     cmd_discover.register(sub)
+    cmd_tray.register(sub)
 
     return p
 
