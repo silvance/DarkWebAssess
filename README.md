@@ -112,15 +112,36 @@ requirements, initializes the database, syncs `sources.yaml` +
 ./run.sh setup            # bootstrap only (no launch)
 
 # Windows
-run.bat
-run.bat collect
+run.bat                   # default: launch the dashboard (auto-opens browser)
+run.bat tray              # system-tray launcher
+dwa sync-config           # any subcommand, always against the project's venv
+dwa user create alice analyst
 
 # Anywhere
-python launch.py [dashboard|collect|scheduler|setup|update]
+python launch.py [dashboard|collect|scheduler|setup|update|tray]
 ```
 
 Useful flags: `--no-pull` (skip git pull), `--no-install` (skip pip), `--port 8502`,
-`--reinstall` (force pip install even if `requirements.txt` is unchanged).
+`--reinstall` (force pip install even if `requirements.txt` is unchanged),
+`--no-browser` (don't auto-open the dashboard URL on launch).
+
+### Windows install (.exe bundle)
+
+After downloading the `mini-threat-intel-windows-*.zip` release artifact and
+extracting it:
+
+```powershell
+cd mini-threat-intel-windows
+powershell -ExecutionPolicy Bypass -File .\installer\Install-DarkWebAssess.ps1
+```
+
+This places the bundle in `%LOCALAPPDATA%\Programs\DarkWebAssess`, stores
+data in `%APPDATA%\DarkWebAssess`, creates Start Menu + Desktop shortcuts,
+and launches the tray icon. No admin rights required. Uninstall with
+`Uninstall-DarkWebAssess.ps1` (Start Menu → DarkWebAssess → Uninstall).
+
+The tray icon menu: **Open Dashboard**, **Run Collection Now**, **Open
+Data Folder**, **About**, **Quit**.
 
 If you'd rather wire it up by hand:
 
