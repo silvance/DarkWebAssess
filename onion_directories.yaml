@@ -1,0 +1,29 @@
+# Trusted onion-aggregator pages. The `discover` command fetches each entry,
+# extracts any .onion URLs it finds, and stores them as PENDING candidates in
+# the onion_candidates table.
+#
+# Candidate URLs are NEVER auto-fetched. You review each one with
+# `dwa discover list / show / approve / reject` and only after you've
+# approved + manually added it to `sources.yaml` does the regular collector
+# touch it.
+#
+# Safety notes:
+#   - transport=clearweb : fetched over plain HTTPS, no Tor. Use for public
+#     indexes (e.g. ahmia.fi).
+#   - transport=tor      : routed through the local SOCKS5h proxy. Tor sidecar
+#                          must be running. Use for onion-hosted aggregators.
+#   - Everything ships ENABLED=false. Flip individual entries on after you've
+#     read the directory's content policy and decided you trust it.
+
+directories:
+  - name: ahmia
+    url: https://ahmia.fi/onions/
+    transport: clearweb
+    enabled: false
+
+  # Onion-hosted aggregator. Enable only with the Tor sidecar running.
+  # The URL below is dark.fail's v3 onion as of 2024 — verify before enabling.
+  - name: dark.fail
+    url: http://darkfailenbsdla5mal2mxn2uz66od5vtzd5qozslagrfzachha3f3id.onion/
+    transport: tor
+    enabled: false

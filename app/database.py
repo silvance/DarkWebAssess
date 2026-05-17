@@ -231,6 +231,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+
+CREATE TABLE IF NOT EXISTS onion_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL UNIQUE,
+    host TEXT NOT NULL,
+    title TEXT,
+    first_source TEXT,
+    sources_json TEXT,
+    times_seen INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'pending',
+    notes TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    discovered_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_onion_candidates_status ON onion_candidates(status);
+CREATE INDEX IF NOT EXISTS idx_onion_candidates_host ON onion_candidates(host);
 """
 
 FTS_SCHEMA = """

@@ -45,6 +45,7 @@ def _ensure_runtime_paths() -> None:
     os.environ.setdefault("SOURCES_PATH", str(res / "sources.yaml"))
     os.environ.setdefault("WATCHLIST_PATH", str(res / "watchlist.yaml"))
     os.environ.setdefault("SUPPRESSION_PATH", str(res / "suppression.yaml"))
+    os.environ.setdefault("ONION_DIRECTORIES_PATH", str(res / "onion_directories.yaml"))
 
     # The DB and any caches must live somewhere writable. Default to a
     # per-user data dir alongside the exe (cwd is fine for a portable build).
