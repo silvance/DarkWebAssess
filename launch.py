@@ -33,8 +33,12 @@ import argparse
 import hashlib
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 from typing import List
 
@@ -178,9 +182,31 @@ def maybe_init_db(skip: bool) -> None:
         warn(f"sync-config returned non-zero (continuing): exit {exc.returncode}")
 
 
-def launch_dashboard(port: int) -> None:
+def _open_browser_when_ready(port: int, host: str = "127.0.0.1", timeout: float = 30.0) -> None:
+    """Poll the port until Streamlit is listening, then open the user's browser."""
+    deadline = time.monotonic() + timeout
+    url = f"http://localhost:{port}/"
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                break
+        except OSError:
+            time.sleep(0.3)
+    else:
+        return
+    try:
+        webbrowser.open(url, new=2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def launch_dashboard(port: int, open_browser: bool = True) -> None:
     info(f"Launching Streamlit dashboard on http://localhost:{port}")
     info("Ctrl-C to stop.")
+    if open_browser:
+        threading.Thread(
+            target=_open_browser_when_ready, args=(port,), daemon=True
+        ).start()
     cmd = [
         str(venv_python()),
         "-m",
@@ -189,11 +215,20 @@ def launch_dashboard(port: int) -> None:
         str(ROOT / "app" / "ui" / "streamlit_app.py"),
         "--server.port",
         str(port),
+        # Suppress Streamlit's own browser-open since we handle it ourselves
+        # (and we want the readiness-wait so the tab doesn't 404 on race).
+        "--server.headless",
+        "true",
     ]
     if os.name == "nt":
         result = subprocess.run(cmd, cwd=str(ROOT))
         sys.exit(result.returncode)
     os.execvp(cmd[0], cmd)
+
+
+def launch_tray() -> None:
+    info("Starting the system-tray launcher ...")
+    run_app(["tray"])  # registered as `python -m app.main tray` via cmd_tray
 
 
 def launch_collect() -> None:
@@ -215,12 +250,17 @@ def main(argv=None) -> None:
         "target",
         nargs="?",
         default="dashboard",
-        choices=["dashboard", "collect", "scheduler", "setup", "update"],
+        choices=["dashboard", "collect", "scheduler", "setup", "update", "tray"],
         help="What to launch after bootstrap (default: dashboard).",
     )
     parser.add_argument("--no-pull", action="store_true", help="Skip git pull.")
     parser.add_argument("--no-install", action="store_true", help="Skip dependency install/update.")
     parser.add_argument("--no-init", action="store_true", help="Skip init-db / sync-config.")
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Don't auto-open the browser when launching the dashboard.",
+    )
     parser.add_argument(
         "--port",
         type=int,
@@ -260,11 +300,13 @@ def main(argv=None) -> None:
         info("Setup complete. Run `./run.sh` (or `python launch.py`) to start the dashboard.")
         return
     if args.target == "dashboard":
-        launch_dashboard(args.port)
+        launch_dashboard(args.port, open_browser=not args.no_browser)
     elif args.target == "collect":
         launch_collect()
     elif args.target == "scheduler":
         launch_scheduler()
+    elif args.target == "tray":
+        launch_tray()
 
 
 if __name__ == "__main__":

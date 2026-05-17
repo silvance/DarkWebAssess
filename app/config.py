@@ -2,8 +2,16 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
-DATA_DIR.mkdir(exist_ok=True)
+
+# DWA_DATA_DIR (set by the Windows installer to %APPDATA%\DarkWebAssess)
+# overrides the in-repo data/ directory. Falls back to ROOT/data for dev /
+# portable use.
+_DWA_DATA_DIR_OVERRIDE = os.getenv("DWA_DATA_DIR")
+if _DWA_DATA_DIR_OVERRIDE:
+    DATA_DIR = Path(_DWA_DATA_DIR_OVERRIDE)
+else:
+    DATA_DIR = ROOT / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "threatintel.db"))
 SOURCES_PATH = os.getenv("SOURCES_PATH", str(ROOT / "sources.yaml"))
