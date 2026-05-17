@@ -30,6 +30,7 @@ from app.config import (
     TOR_SOCKS_HOST,
     TOR_SOCKS_PORT,
 )
+from app.collectors.mime_policy import should_ingest
 from app.normalizer import html_to_text, normalize_document
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,6 @@ _ONION_HOST_RE = re.compile(
     re.IGNORECASE,
 )
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
-_BINARY_PREVIEW_LIMIT = 200
 
 
 def is_onion_url(url: str) -> bool:
@@ -100,25 +100,21 @@ def collect_onion(source: dict) -> Iterator[dict]:
     resp.raise_for_status()
 
     content_type = (resp.headers.get("Content-Type") or "").lower()
-    is_textual = (
-        not content_type
-        or "text/html" in content_type
-        or "text/plain" in content_type
-        or "application/xhtml" in content_type
-    )
-
-    if is_textual:
-        body = resp.text
-        text = html_to_text(body) if "html" in content_type or "<html" in body[:200].lower() else body
-        title = _extract_title(body)
-    else:
-        # Don't ingest binary blobs as documents — record metadata only so
-        # the source health page still shows the fetch happened.
-        text = (
-            f"(binary content, type={content_type or 'unknown'}, "
-            f"{len(resp.content)} bytes; first {_BINARY_PREVIEW_LIMIT} bytes hex-elided)"
+    raw_bytes = resp.content
+    ok, reason = should_ingest(content_type, raw_bytes)
+    if not ok:
+        # Hard policy: never store binary content. No placeholder row, no
+        # hex-elided preview — just drop the response. The source health
+        # page still records the fetch happened (via record_run upstream).
+        log.warning(
+            "onion: refusing to ingest non-textual response from %s (%s, %d bytes)",
+            name, reason, len(raw_bytes),
         )
-        title = None
+        return
+
+    body = resp.text
+    text = html_to_text(body) if "html" in content_type or "<html" in body[:200].lower() else body
+    title = _extract_title(body)
 
     yield normalize_document(
         source_name=name,

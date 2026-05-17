@@ -65,8 +65,10 @@ def _cmd_run(args) -> None:
     from app.config_models import load_onion_directories
     from app.collectors.onion_discovery import discover_from_directories
     from app.database import get_connection
+    from app.network.egress import preflight_or_exit
     from app.repository import upsert_onion_candidate
 
+    preflight_or_exit()
     cfg = load_onion_directories(ONION_DIRECTORIES_PATH)
     directories = cfg.directories
     if args.directory:

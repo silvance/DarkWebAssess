@@ -53,6 +53,8 @@ def cmd_sync_config(_args):
 
 
 def cmd_collect(args):
+    from app.network.egress import preflight_or_exit
+    preflight_or_exit()
     totals = run_collection_cycle(only=args.only)
     print(
         "Collection done. "

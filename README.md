@@ -353,6 +353,55 @@ Safety properties:
   hostname, so a hostile aggregator can't sneak a clearweb URL in.
 - Response size is capped at 2 MB per page; titles are truncated to 200 chars.
 
+### Egress IP verification (`network-check`)
+
+Aggregator operators log every request. If you don't want your residential
+or corporate IP showing up in those logs, route the box through WireGuard
+and use the tool's egress verifier to confirm the tunnel is up before any
+fetch.
+
+```bash
+export EXPECTED_EGRESS_PREFIXES="185.156.176.0/20,194.110.0.0/16"
+export STRICT_EGRESS=1
+
+dwa network-check
+# [network-check] egress IP: 185.156.180.42
+# [network-check] allowlist:  185.156.176.0/20, 194.110.0.0/16
+# [network-check] result:     in-prefix:185.156.176.0/20
+```
+
+With `STRICT_EGRESS=1`, the `collect`, `scheduler`, and `discover run`
+commands all run the same preflight at startup and refuse to proceed if
+the egress IP is outside the allowlist — or if the lookup itself fails.
+
+The tool **does not** manage the VPN tunnel itself — see
+[`docs/OPSEC.md`](docs/OPSEC.md) for the recommended WireGuard +
+kill-switch setup. The verifier is defense-in-depth on top of that, not a
+replacement for it.
+
+### Binary-content ingestion policy
+
+Every HTTP-fetching collector (onion content, onion discovery) routes
+through `app/collectors/mime_policy.py` with a strict allowlist:
+
+- **Content-Type must be one of** `text/html`, `text/plain`, `text/xml`,
+  `application/xhtml+xml`, `application/xml`, `application/rss+xml`,
+  `application/atom+xml`, `application/json`. Anything else — including
+  `application/octet-stream`, `image/*`, `video/*`, `audio/*`,
+  `application/pdf`, `application/zip`, etc. — is dropped.
+- **And** the first 1 KB of the body must look textual: no NUL bytes, no
+  known binary magic signatures (JPEG, PNG, GIF, PDF, ZIP, RAR, 7z, gzip,
+  MP4, WAV, OGG, MP3, FLAC, Matroska, PE/EXE, ELF), <5% non-printable.
+- A rejected response yields **zero** documents — no placeholder row, no
+  hex preview, nothing. The fetch is recorded in source health, but no
+  bytes ever land in the document store.
+
+The threat model is straightforward: a self-hosted threat-intel tool that
+caches arbitrary content from arbitrary onion sites can inadvertently
+store CSAM or other illegal material. Hard "textual content only" plus
+magic-byte verification means image / video / archive content is never
+written to disk, regardless of how the server labels it.
+
 ## Production deployment
 
 The repo ships a `Dockerfile` and `docker-compose.yml` that runs two

@@ -55,11 +55,15 @@ def test_build_tor_session_honors_overrides():
 
 
 # --- collect_onion ------------------------------------------------------
-def _fake_response(text: str, *, status_code: int = 200, content_type: str = "text/html"):
+def _fake_response(text, *, status_code: int = 200, content_type: str = "text/html"):
     resp = MagicMock()
     resp.status_code = status_code
-    resp.text = text
-    resp.content = text.encode("utf-8")
+    if isinstance(text, bytes):
+        resp.content = text
+        resp.text = text.decode("utf-8", errors="replace")
+    else:
+        resp.text = text
+        resp.content = text.encode("utf-8")
     resp.headers = {"Content-Type": content_type}
     resp.raise_for_status = MagicMock()
     return resp
@@ -97,17 +101,70 @@ def test_collect_onion_yields_normalized_doc(monkeypatch):
     fake_session.get.assert_called_once()
 
 
-def test_collect_onion_handles_binary_response(monkeypatch):
+def test_collect_onion_drops_binary_octet_stream(monkeypatch):
+    """Hard policy: a binary response yields ZERO documents. We do not
+    store a placeholder row — that would let a hostile source inject text
+    into our DB by abusing the placeholder."""
     onion_url = "http://" + ("c" * 56) + ".onion/file"
     fake_session = MagicMock()
-    fake_session.get.return_value = _fake_response("\x00\x01\x02", content_type="application/octet-stream")
+    fake_session.get.return_value = _fake_response(
+        b"\x00\x01\x02\x03binary garbage",
+        content_type="application/octet-stream",
+    )
     monkeypatch.setattr(onion_collector, "build_tor_session", lambda **kw: fake_session)
 
     docs = list(onion_collector.collect_onion(
         {"name": "Bin", "type": "onion", "url": onion_url}
     ))
-    assert "(binary content" in docs[0]["raw_text"]
-    assert docs[0]["title"] is None
+    assert docs == []
+
+
+def test_collect_onion_drops_jpeg_even_with_lying_mime(monkeypatch):
+    """If the server lies about content-type but the bytes are clearly
+    a JPEG, we still reject. Magic-byte sniff backs up the MIME allowlist."""
+    onion_url = "http://" + ("d" * 56) + ".onion/lying.html"
+    jpeg_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01...rest of a jpeg"
+    fake_session = MagicMock()
+    fake_session.get.return_value = _fake_response(
+        jpeg_bytes, content_type="text/html",
+    )
+    monkeypatch.setattr(onion_collector, "build_tor_session", lambda **kw: fake_session)
+
+    docs = list(onion_collector.collect_onion(
+        {"name": "Liar", "type": "onion", "url": onion_url}
+    ))
+    assert docs == []
+
+
+def test_collect_onion_drops_missing_content_type(monkeypatch):
+    """Missing Content-Type used to be permitted; the new policy is strict
+    allowlist, so unlabeled responses are dropped."""
+    onion_url = "http://" + ("e" * 56) + ".onion/"
+    fake_session = MagicMock()
+    fake_session.get.return_value = _fake_response(
+        "<html>x</html>", content_type="",
+    )
+    monkeypatch.setattr(onion_collector, "build_tor_session", lambda **kw: fake_session)
+
+    docs = list(onion_collector.collect_onion(
+        {"name": "Missing", "type": "onion", "url": onion_url}
+    ))
+    assert docs == []
+
+
+def test_collect_onion_drops_image_mime(monkeypatch):
+    onion_url = "http://" + ("f" * 56) + ".onion/img"
+    fake_session = MagicMock()
+    fake_session.get.return_value = _fake_response(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR",
+        content_type="image/png",
+    )
+    monkeypatch.setattr(onion_collector, "build_tor_session", lambda **kw: fake_session)
+
+    docs = list(onion_collector.collect_onion(
+        {"name": "Pic", "type": "onion", "url": onion_url}
+    ))
+    assert docs == []
 
 
 # --- Pydantic config-time guards ----------------------------------------
