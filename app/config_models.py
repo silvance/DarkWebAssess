@@ -90,6 +90,48 @@ class SuppressionConfig(BaseModel):
     suppress: List[SuppressionEntry] = Field(default_factory=list)
 
 
+class OnionDirectoryEntry(BaseModel):
+    """A trusted aggregator/index page we'll fetch and parse for onion URLs.
+
+    `transport=clearweb` fetches over plain HTTPS (no Tor). Use this for
+    public indexes like ahmia.fi.
+
+    `transport=tor` routes through the local SOCKS5h proxy. Use this for
+    onion-hosted aggregators (dark.fail, etc.). Operator must explicitly
+    enable each one.
+    """
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+    transport: Literal["clearweb", "tor"] = "clearweb"
+    enabled: bool = False  # opt-in, even for clearweb indexes
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, v: str) -> str:
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("directory url must start with http:// or https://")
+        return v
+
+    @model_validator(mode="after")
+    def _transport_matches_host(self):
+        host = (urlparse(self.url).hostname or "").lower()
+        is_onion_host = host.endswith(".onion")
+        if self.transport == "tor" and not is_onion_host:
+            raise ValueError("transport=tor directories must use a *.onion URL")
+        if self.transport == "clearweb" and is_onion_host:
+            raise ValueError(
+                "transport=clearweb with a .onion URL would leak the request "
+                "over the clearweb — set transport=tor."
+            )
+        return self
+
+
+class OnionDirectoriesConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    directories: List[OnionDirectoryEntry] = Field(default_factory=list)
+
+
 # ---- loaders ------------------------------------------------------------
 def _read_yaml(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -106,3 +148,7 @@ def load_watchlist(path: str) -> WatchlistConfig:
 
 def load_suppression(path: str) -> SuppressionConfig:
     return SuppressionConfig.model_validate(_read_yaml(path))
+
+
+def load_onion_directories(path: str) -> OnionDirectoriesConfig:
+    return OnionDirectoriesConfig.model_validate(_read_yaml(path))

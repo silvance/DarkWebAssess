@@ -318,6 +318,41 @@ The original project plan drew a clear line that this collector keeps:
 - `ONION_REQUEST_TIMEOUT` (default `60` seconds — Tor is slow)
 - `ONION_USER_AGENT` (default a generic Firefox UA)
 
+### Onion discovery (Option A — index-only)
+
+The `discover` command fetches operator-curated aggregator pages (Ahmia,
+dark.fail, etc. — listed in `onion_directories.yaml`) and extracts any
+`.onion` URLs they list. **Discovered URLs are never auto-fetched.** Each
+becomes a PENDING candidate in `onion_candidates`; you review them and
+manually promote the ones you want into `sources.yaml`.
+
+```bash
+# 1. Edit onion_directories.yaml — flip `enabled: true` on the indexes you trust.
+# 2. Fetch and parse them.
+python -m app.main discover run
+
+# 3. Triage.
+python -m app.main discover list                    # pending candidates
+python -m app.main discover show <id>               # full detail
+python -m app.main discover approve <id>            # prints the sources.yaml snippet
+python -m app.main discover reject <id> --reason "spam"
+
+# 4. Paste the approve snippet into sources.yaml, then:
+python -m app.main sync-config
+python -m app.main collect --only "..."
+```
+
+Safety properties:
+
+- The discovery collector only fetches the seeded directory URLs, never
+  a candidate URL it has just discovered.
+- A rejected candidate stays rejected on re-discovery (the operator's NO
+  is durable).
+- Both extraction passes (proper `<a href>` + free-text fallback) reject
+  any URL whose host isn't a Tor base32 v2 (16-char) or v3 (56-char)
+  hostname, so a hostile aggregator can't sneak a clearweb URL in.
+- Response size is capped at 2 MB per page; titles are truncated to 200 chars.
+
 ## Production deployment
 
 The repo ships a `Dockerfile` and `docker-compose.yml` that runs two

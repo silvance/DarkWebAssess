@@ -315,3 +315,127 @@ def list_enrichments(conn: sqlite3.Connection, entity_type: str, entity_value: s
         """,
         (entity_type, entity_value),
     ).fetchall()
+
+
+# --- onion discovery candidates ----------------------------------------
+_ONION_CANDIDATE_COLS = (
+    "id, url, host, title, first_source, sources_json, times_seen, "
+    "status, notes, reviewed_by, reviewed_at, discovered_at, last_seen_at"
+)
+_VALID_CANDIDATE_STATUSES = {"pending", "approved", "rejected"}
+
+
+def upsert_onion_candidate(
+    conn: sqlite3.Connection,
+    *,
+    url: str,
+    host: str,
+    title: Optional[str],
+    source_name: str,
+) -> dict:
+    """Insert a new candidate or refresh an existing one.
+
+    On re-discovery we update last_seen_at, bump times_seen, and merge the
+    source_name into sources_json — but we DO NOT change status. A rejected
+    candidate stays rejected forever (or until the operator manually flips
+    it). That's the safety property: once you've said no, the tool won't
+    keep nagging.
+    """
+    now = utcnow_iso()
+    existing = conn.execute(
+        f"SELECT {_ONION_CANDIDATE_COLS} FROM onion_candidates WHERE url = ?",
+        (url,),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """
+            INSERT INTO onion_candidates
+                (url, host, title, first_source, sources_json, times_seen,
+                 status, discovered_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, 1, 'pending', ?, ?)
+            """,
+            (url, host, title, source_name, json.dumps([source_name]), now, now),
+        )
+        return get_onion_candidate_by_url(conn, url)
+
+    try:
+        sources = json.loads(existing["sources_json"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        sources = []
+    if source_name not in sources:
+        sources.append(source_name)
+    new_title = title or existing["title"]
+    conn.execute(
+        """
+        UPDATE onion_candidates
+        SET times_seen = times_seen + 1,
+            last_seen_at = ?,
+            sources_json = ?,
+            title = ?
+        WHERE url = ?
+        """,
+        (now, json.dumps(sources), new_title, url),
+    )
+    return get_onion_candidate_by_url(conn, url)
+
+
+def get_onion_candidate(conn: sqlite3.Connection, candidate_id: int) -> Optional[dict]:
+    row = conn.execute(
+        f"SELECT {_ONION_CANDIDATE_COLS} FROM onion_candidates WHERE id = ?",
+        (int(candidate_id),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_onion_candidate_by_url(conn: sqlite3.Connection, url: str) -> Optional[dict]:
+    row = conn.execute(
+        f"SELECT {_ONION_CANDIDATE_COLS} FROM onion_candidates WHERE url = ?",
+        (url,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_onion_candidates(
+    conn: sqlite3.Connection,
+    *,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    sql = f"SELECT {_ONION_CANDIDATE_COLS} FROM onion_candidates WHERE 1=1"
+    params: list = []
+    if status:
+        sql += " AND status = ?"
+        params.append(status.lower())
+    if search:
+        sql += " AND (url LIKE ? OR title LIKE ?)"
+        like = f"%{search}%"
+        params.extend([like, like])
+    sql += " ORDER BY last_seen_at DESC, id DESC"
+    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def set_onion_candidate_status(
+    conn: sqlite3.Connection,
+    candidate_id: int,
+    status: str,
+    *,
+    reviewed_by: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> Optional[dict]:
+    s = status.lower()
+    if s not in _VALID_CANDIDATE_STATUSES:
+        raise ValueError(
+            f"invalid status {status!r}; expected one of {sorted(_VALID_CANDIDATE_STATUSES)}"
+        )
+    existing = get_onion_candidate(conn, candidate_id)
+    if existing is None:
+        return None
+    conn.execute(
+        """
+        UPDATE onion_candidates
+        SET status = ?, reviewed_by = ?, reviewed_at = ?, notes = ?
+        WHERE id = ?
+        """,
+        (s, reviewed_by, utcnow_iso(), notes, int(candidate_id)),
+    )
+    return get_onion_candidate(conn, candidate_id)

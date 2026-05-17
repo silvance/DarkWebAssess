@@ -16,6 +16,9 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "threatintel.db"))
 SOURCES_PATH = os.getenv("SOURCES_PATH", str(ROOT / "sources.yaml"))
 WATCHLIST_PATH = os.getenv("WATCHLIST_PATH", str(ROOT / "watchlist.yaml"))
+ONION_DIRECTORIES_PATH = os.getenv(
+    "ONION_DIRECTORIES_PATH", str(ROOT / "onion_directories.yaml")
+)
 
 USER_AGENT = os.getenv(
     "USER_AGENT",

@@ -70,6 +70,7 @@ def _ensure_runtime_paths() -> None:
     os.environ.setdefault("SOURCES_PATH", str(res / "sources.yaml"))
     os.environ.setdefault("WATCHLIST_PATH", str(res / "watchlist.yaml"))
     os.environ.setdefault("SUPPRESSION_PATH", str(res / "suppression.yaml"))
+    os.environ.setdefault("ONION_DIRECTORIES_PATH", str(res / "onion_directories.yaml"))
 
     if "DATABASE_PATH" not in os.environ:
         os.environ["DATABASE_PATH"] = str(_resolve_data_dir() / "threatintel.db")

@@ -47,6 +47,7 @@ datas += [
     ("sources.yaml", "."),
     ("watchlist.yaml", "."),
     ("suppression.yaml", "."),
+    ("onion_directories.yaml", "."),
     ("app/extractors/named_entities.yaml", "app/extractors"),
     ("app/ui/streamlit_app.py", "app/ui"),
 ]
@@ -71,6 +72,7 @@ hiddenimports += [
     "app.cli.cmd_score",
     "app.cli.cmd_search",
     "app.cli.cmd_summarize",
+    "app.cli.cmd_discover",
     "app.cli.cmd_tor",
     "app.cli.cmd_tray",
     "app.cli.cmd_users",
@@ -81,6 +83,7 @@ hiddenimports += [
     "app.auth.passwords",
     "app.auth.users",
     "app.collectors.onion_collector",
+    "app.collectors.onion_discovery",
     "app.collectors.rss_collector",
     "app.extractors.entities",
     "app.extractors.handles",
