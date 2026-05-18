@@ -99,6 +99,11 @@ tests/
 
 ## Quick start
 
+> **New to the tool? Read [`docs/TUTORIAL.md`](docs/TUTORIAL.md).** It
+> walks through install, your first watchlist entry, your first collection
+> cycle, the dark-web discovery workflow, and day-to-day habits — with
+> copy-pasteable commands and the expected output at each step.
+
 The fastest path: run the one-shot launcher. It pulls the latest commit
 (if you're in a git checkout), creates `.venv/`, installs/updates
 requirements, initializes the database, syncs `sources.yaml` +
