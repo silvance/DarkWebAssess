@@ -498,5 +498,7 @@ dwa restore data/backups/<file>.db      # flushes WAL, swaps in
 ## Where to go next
 
 - **[OPSEC.md](OPSEC.md)** — VPN + kill switch + `STRICT_EGRESS`
+- **[crates/dwa_extractors/README.md](../crates/dwa_extractors/README.md)**
+  — Rust extraction accelerator (~25× faster, optional)
 - **[CHANGELOG.md](../CHANGELOG.md)** — what changed in each release
 - **`dwa --help`** — full CLI reference, every subcommand
