@@ -13,3 +13,11 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Rust / maturin build artifacts
+target/
+*.so
+*.dylib
+*.pyd
+crates/*/dist/
+# Cargo.lock IS committed (Python wheel is a binary deliverable, not a library).

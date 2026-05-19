@@ -202,6 +202,44 @@ def extract_cves(text: str) -> List[dict]:
     return _emit(CVE_RE.finditer(text), text, "cve", str.upper)
 
 
+# --- Optional Rust accelerator -----------------------------------------
+# If `dwa_extractors` (the Rust extension built via PyO3 in
+# crates/dwa_extractors/) is installed, we use it for the URL / email /
+# IPv4 / IPv6 / hash / CVE hot path — typically 10-50x faster. Pure
+# Python is the fallback; the project runs identically either way.
+try:
+    from dwa_extractors import extract_observables as _rust_extract_observables
+    _HAVE_RUST = True
+except ImportError:
+    _rust_extract_observables = None  # type: ignore[assignment]
+    _HAVE_RUST = False
+
+
+def _python_simple_observables(text: str) -> List[dict]:
+    """Fallback: run the per-type Python extractors and concatenate."""
+    out: List[dict] = []
+    out.extend(extract_urls(text))
+    out.extend(extract_emails(text))
+    out.extend(extract_ipv4(text))
+    out.extend(extract_ipv6(text))
+    out.extend(extract_hashes(text))
+    out.extend(extract_cves(text))
+    return out
+
+
+def extract_simple_observables(text: str) -> List[dict]:
+    """Extract URL / email / IPv4 / IPv6 / MD5 / SHA1 / SHA256 / CVE.
+
+    Routes through the Rust accelerator when available, falls back to the
+    pure-Python extractors otherwise. The two implementations are kept
+    in sync by `tests/test_extractor_bench.py`, which asserts identical
+    output on a synthetic corpus.
+    """
+    if _HAVE_RUST:
+        return _rust_extract_observables(text)
+    return _python_simple_observables(text)
+
+
 def extract_all(text: str) -> List[dict]:
     if not text:
         return []
@@ -214,15 +252,12 @@ def extract_all(text: str) -> List[dict]:
 
     cleaned = refang(text)
     results = []
-    results.extend(extract_urls(cleaned))
-    results.extend(extract_emails(cleaned))
-    results.extend(extract_ipv4(cleaned))
-    results.extend(extract_ipv6(cleaned))
+    # Rust-accelerated path (URL/email/IPv4/IPv6/hashes/CVE).
+    results.extend(extract_simple_observables(cleaned))
+    # Python-only extractors (need TLD list, YAML lookups, etc.).
     results.extend(extract_onions(cleaned))
     results.extend(extract_domains(cleaned))
     results.extend(extract_wallets(cleaned))
-    results.extend(extract_hashes(cleaned))
-    results.extend(extract_cves(cleaned))
     results.extend(extract_handles(cleaned))
     results.extend(extract_named_entities(cleaned))
     results.extend(extract_leak_indicators(cleaned))

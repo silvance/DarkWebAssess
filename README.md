@@ -254,6 +254,37 @@ pip install pytest
 pytest -q
 ```
 
+## Rust accelerator (optional, ~25× faster extraction)
+
+`crates/dwa_extractors/` is a Rust extension (PyO3 + the `regex` crate)
+that takes over the URL / email / IPv4 / IPv6 / MD5 / SHA1 / SHA256 /
+CVE extraction hot path. It's an **opt-in speedup** — if you don't
+install it, the project falls back to the pure-Python extractors and
+keeps working identically. The two paths are kept in sync by
+`tests/test_extractor_bench.py`, which asserts byte-identical output on
+a synthetic corpus.
+
+```bash
+# One-time dev build (installs into your active venv).
+pip install maturin
+cd crates/dwa_extractors
+maturin develop --release
+cd ../..
+python -c "import dwa_extractors; print(dwa_extractors.version())"
+# 0.1.0
+```
+
+Release wheels for Linux / macOS / Windows are built by the
+[`build-wheels`](.github/workflows/build-wheels.yml) GHA workflow and
+attached to GitHub Releases on `v*` tags. Once published you can:
+
+```bash
+pip install dwa_extractors
+```
+
+See [`crates/dwa_extractors/README.md`](crates/dwa_extractors/README.md)
+for the coverage list, dict shape, and bench notes.
+
 ## Dark-web sources (Tor)
 
 The platform can also collect from public Tor hidden services

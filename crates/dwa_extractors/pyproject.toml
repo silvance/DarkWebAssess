@@ -1,0 +1,22 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "dwa-extractors"
+version = "0.1.0"
+description = "Fast regex-based observable extractors for DarkWebAssess."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "dwa_extractors._native"
+python-source = "python"
