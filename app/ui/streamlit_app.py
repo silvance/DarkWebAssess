@@ -826,6 +826,176 @@ def page_watchlist():
                         st.error(f"Delete failed: {exc}")
 
 
+def page_discovery():
+    """Triage pending onion candidates discovered by `dwa discover run`.
+
+    The CLI is the source of truth for actually fetching aggregator
+    pages (operator-curated, opt-in via `onion_directories.yaml`). This
+    page lets the analyst review pending candidates without leaving the
+    dashboard: approve (prints a sources.yaml snippet to paste) or
+    reject (durable — won't be re-suggested even if a directory lists
+    it again on the next cycle).
+    """
+    require_role(_user, "analyst")
+    from app.auth.audit import record_audit
+    from app.repository import (
+        get_onion_candidate,
+        list_onion_candidates,
+        set_onion_candidate_status,
+    )
+
+    actor = (_user or {}).get("username")
+    actor_role = (_user or {}).get("role")
+
+    st.title("Discovery")
+    st.caption(
+        "Pending onion candidates discovered by `dwa discover run`. "
+        "Approving a candidate prints a `sources.yaml` snippet for you to "
+        "paste; the regular onion collector only touches a URL once you've "
+        "added it there and run `sync-config`. Rejecting is durable — the "
+        "URL won't be re-suggested even if a directory lists it again."
+    )
+
+    # --- Filters --------------------------------------------------------
+    fcol1, fcol2 = st.columns(2)
+    with fcol1:
+        status_filter = st.selectbox(
+            "Status",
+            ["pending", "approved", "rejected", "all"],
+            index=0,
+        )
+    with fcol2:
+        search = st.text_input("Search URL / title")
+
+    status = None if status_filter == "all" else status_filter
+    with _conn() as conn:
+        rows = list_onion_candidates(conn, status=status, search=search or None)
+
+    st.write(f"{len(rows)} candidates")
+    if rows:
+        df = pd.DataFrame(rows)[
+            ["id", "status", "times_seen", "host", "title", "first_source", "last_seen_at"]
+        ]
+        st.dataframe(df, width="stretch", hide_index=True)
+    else:
+        st.caption("(no candidates match the current filter)")
+
+    st.markdown("---")
+
+    if not rows:
+        return
+
+    # --- Review one ------------------------------------------------------
+    with st.expander("Review a candidate", expanded=True):
+        ids = [r["id"] for r in rows]
+        target_id = st.selectbox(
+            "Select candidate by ID",
+            ids,
+            format_func=lambda i: (
+                f"#{i} [{next(r for r in rows if r['id'] == i)['status']}] "
+                f"{next(r for r in rows if r['id'] == i)['host']}"
+            ),
+            key="disc_target",
+        )
+        target = next(r for r in rows if r["id"] == target_id)
+
+        # Show the full URL + metadata. Mark the URL as code so it doesn't
+        # get auto-linked — clicking the dashboard should never trigger a
+        # fetch of an unreviewed candidate.
+        st.markdown(f"**URL** (do not click without review):")
+        st.code(target["url"], language="text")
+        meta_cols = st.columns(3)
+        with meta_cols[0]:
+            st.metric("Status", target["status"])
+        with meta_cols[1]:
+            st.metric("Times seen", target["times_seen"])
+        with meta_cols[2]:
+            st.metric("First seen by", target.get("first_source") or "—")
+        if target.get("title"):
+            st.markdown(f"**Title:** {target['title']}")
+
+        notes = st.text_input(
+            "Notes (optional, e.g. why approved/rejected)",
+            key="disc_notes",
+        )
+
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            if st.button("Approve", key="disc_approve", type="primary",
+                         disabled=target["status"] == "approved"):
+                try:
+                    with _conn() as conn:
+                        updated = set_onion_candidate_status(
+                            conn, target_id, "approved",
+                            reviewed_by=actor, notes=notes or None,
+                        )
+                        if updated is not None:
+                            record_audit(
+                                conn, action="discover_approved",
+                                actor=actor, actor_role=actor_role,
+                                target_type="onion_candidate",
+                                target_id=str(target_id),
+                                payload={
+                                    "url": target["url"],
+                                    "host": target["host"],
+                                    "notes": notes or None,
+                                },
+                            )
+                        conn.commit()
+                    if updated is None:
+                        st.error("Candidate not found.")
+                    else:
+                        st.success(
+                            f"Approved #{target_id}. Paste this snippet into "
+                            "`sources.yaml`, then run `dwa sync-config`:"
+                        )
+                        title = target.get("title") or target["host"]
+                        safe_name = (title[:60] if title else f"onion-{target_id}").replace('"', "'").strip()
+                        snippet = (
+                            f"  - name: \"{safe_name}\"\n"
+                            f"    type: onion\n"
+                            f"    url: \"{target['url']}\"\n"
+                            f"    enabled: true\n"
+                        )
+                        st.code(snippet, language="yaml")
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Approve failed: {exc}")
+
+        with ac2:
+            confirm = st.checkbox("I'm sure", key="disc_reject_confirm")
+            if st.button("Reject", key="disc_reject",
+                         disabled=(not confirm) or target["status"] == "rejected"):
+                try:
+                    with _conn() as conn:
+                        updated = set_onion_candidate_status(
+                            conn, target_id, "rejected",
+                            reviewed_by=actor, notes=notes or None,
+                        )
+                        if updated is not None:
+                            record_audit(
+                                conn, action="discover_rejected",
+                                actor=actor, actor_role=actor_role,
+                                target_type="onion_candidate",
+                                target_id=str(target_id),
+                                payload={
+                                    "url": target["url"],
+                                    "host": target["host"],
+                                    "notes": notes or None,
+                                },
+                            )
+                        conn.commit()
+                    if updated is None:
+                        st.error("Candidate not found.")
+                    else:
+                        st.success(
+                            f"Rejected #{target_id}. Re-discovery won't "
+                            "re-suggest it."
+                        )
+                        st.rerun()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Reject failed: {exc}")
+
+
 def page_reports():
     from app.reports.renderers import render_html, render_markdown
     from app.reports.runner import (
@@ -1101,6 +1271,7 @@ PAGES = {
     "Matches": page_matches,
     "Cases": page_cases,
     "Watchlist": page_watchlist,
+    "Discovery": page_discovery,
     "Reports": page_reports,
     "Relationships": page_relationships,
     "Search": page_search,
