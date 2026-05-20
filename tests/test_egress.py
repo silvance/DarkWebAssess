@@ -152,3 +152,124 @@ def test_strict_egress_disabled_when_unset_or_falsy(monkeypatch):
     assert egress.strict_egress_enabled() is False
     monkeypatch.setenv("STRICT_EGRESS", "no")
     assert egress.strict_egress_enabled() is False
+
+
+# --- URL resolution / fallback chain ------------------------------------
+def test_resolve_egress_urls_default_chain(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.delenv("EGRESS_CHECK_URLS", raising=False)
+    urls = egress._resolve_egress_urls()
+    assert len(urls) >= 3  # at least api.ipify.org + 2 fallbacks
+    assert urls[0] == "https://api.ipify.org"
+
+
+def test_resolve_egress_urls_explicit_override_disables_fallback(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.delenv("EGRESS_CHECK_URLS", raising=False)
+    urls = egress._resolve_egress_urls("https://custom.example.com/ip")
+    assert urls == ["https://custom.example.com/ip"]
+
+
+def test_resolve_egress_urls_singular_env_disables_fallback(monkeypatch):
+    monkeypatch.setenv("EGRESS_CHECK_URL", "https://my.only.choice/")
+    monkeypatch.delenv("EGRESS_CHECK_URLS", raising=False)
+    urls = egress._resolve_egress_urls()
+    assert urls == ["https://my.only.choice/"]
+
+
+def test_resolve_egress_urls_plural_env_overrides_default(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.setenv("EGRESS_CHECK_URLS", "https://a.example/, https://b.example/")
+    urls = egress._resolve_egress_urls()
+    assert urls == ["https://a.example/", "https://b.example/"]
+
+
+def test_resolve_egress_urls_plural_env_skips_empty_entries(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.setenv("EGRESS_CHECK_URLS", "https://a.example/, ,https://b.example/,,")
+    urls = egress._resolve_egress_urls()
+    assert urls == ["https://a.example/", "https://b.example/"]
+
+
+# --- get_egress_ip with fallback ---------------------------------------
+class _FakeResponse:
+    def __init__(self, text: str = "1.2.3.4", status: int = 200):
+        self.text = text
+        self.status = status
+
+    def raise_for_status(self):
+        if self.status >= 400:
+            import requests
+            raise requests.HTTPError(f"HTTP {self.status}")
+
+
+def test_get_egress_ip_uses_first_url_on_success(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.delenv("EGRESS_CHECK_URLS", raising=False)
+    calls = []
+    def fake_get(url, timeout):
+        calls.append(url)
+        return _FakeResponse("203.0.113.7")
+    monkeypatch.setattr(egress.requests, "get", fake_get)
+    ip = egress.get_egress_ip()
+    assert ip == "203.0.113.7"
+    assert len(calls) == 1  # second URL never tried
+
+
+def test_get_egress_ip_falls_back_on_request_exception(monkeypatch):
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.setenv("EGRESS_CHECK_URLS", "https://broken.example/,https://ok.example/")
+    import requests as _req
+    calls = []
+    def fake_get(url, timeout):
+        calls.append(url)
+        if "broken" in url:
+            raise _req.ConnectionError("dns failed")
+        return _FakeResponse("198.51.100.42")
+    monkeypatch.setattr(egress.requests, "get", fake_get)
+    ip = egress.get_egress_ip()
+    assert ip == "198.51.100.42"
+    assert calls == ["https://broken.example/", "https://ok.example/"]
+
+
+def test_get_egress_ip_falls_back_on_unparseable_response(monkeypatch):
+    """First URL returns 200 with HTML body (e.g. rate-limit page).
+    Second URL returns a real IP. We should fall through and use it."""
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.setenv("EGRESS_CHECK_URLS", "https://garbage.example/,https://ok.example/")
+    def fake_get(url, timeout):
+        if "garbage" in url:
+            return _FakeResponse("<html>rate limited</html>")
+        return _FakeResponse("198.51.100.42")
+    monkeypatch.setattr(egress.requests, "get", fake_get)
+    ip = egress.get_egress_ip()
+    assert ip == "198.51.100.42"
+
+
+def test_get_egress_ip_raises_when_all_urls_fail(monkeypatch):
+    """If every URL fails, we surface a RuntimeError with the per-URL
+    error chain so the operator can see which services were tried."""
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.setenv("EGRESS_CHECK_URLS", "https://a.example/,https://b.example/")
+    import requests as _req
+    def fake_get(url, timeout):
+        raise _req.Timeout(f"timeout on {url}")
+    monkeypatch.setattr(egress.requests, "get", fake_get)
+    with pytest.raises(RuntimeError, match="egress lookup failed"):
+        egress.get_egress_ip()
+
+
+def test_check_egress_propagates_total_failure_through_to_result(monkeypatch):
+    """check_egress() wraps get_egress_ip() — when the entire chain
+    fails, the wrapper returns ok=False with the RuntimeError in the
+    reason rather than letting it propagate."""
+    monkeypatch.delenv("EGRESS_CHECK_URL", raising=False)
+    monkeypatch.delenv("EGRESS_CHECK_URLS", raising=False)
+    import requests as _req
+    def fake_get(url, timeout):
+        raise _req.ConnectionError(f"unreachable {url}")
+    monkeypatch.setattr(egress.requests, "get", fake_get)
+    result = egress.check_egress("10.0.0.0/8")
+    assert result.ok is False
+    assert result.ip is None
+    assert "egress-lookup-failed" in result.reason

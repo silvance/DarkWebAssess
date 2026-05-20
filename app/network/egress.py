@@ -25,9 +25,18 @@ Configuration (all optional, all via env)
                              "185.156.176.0/20,194.110.0.0/16"
   EXPECTED_EGRESS_COUNTRY    Two-letter country code. Requires the
                              optional country lookup (ipapi.co).
-  EGRESS_CHECK_URL           Override the IP-echo URL. Default
-                             https://api.ipify.org.
-  EGRESS_CHECK_TIMEOUT       Seconds (default 10).
+  EGRESS_CHECK_URL           Single IP-echo URL override. Bypasses the
+                             fallback chain — only this URL is tried.
+                             Use this when you want a hard dependency on
+                             one service.
+  EGRESS_CHECK_URLS          Comma-separated fallback chain (overrides
+                             the built-in default). Tried in order
+                             until one returns a parseable IP.
+                             Default chain: api.ipify.org, icanhazip.com,
+                             ifconfig.me/ip, ipv4.icanhazip.com.
+  EGRESS_CHECK_TIMEOUT       Per-URL request timeout in seconds
+                             (default 10). Total wall-clock budget is
+                             roughly timeout × number of URLs tried.
   STRICT_EGRESS              "1" enables the preflight on collect /
                              scheduler. Default off — opt-in.
 """
@@ -52,6 +61,37 @@ class EgressResult:
     expected_prefixes: List[str]
 
 
+DEFAULT_EGRESS_URLS = (
+    "https://api.ipify.org",
+    "https://icanhazip.com",
+    "https://ifconfig.me/ip",
+    "https://ipv4.icanhazip.com",
+)
+
+
+def _resolve_egress_urls(url_override: Optional[str] = None) -> List[str]:
+    """Pick which IP-echo URL(s) to try, in priority order.
+
+    Precedence:
+      1. Explicit `url_override` arg (used by tests + the `network-check
+         --url` flag) — single URL, no fallback.
+      2. `EGRESS_CHECK_URL` env var — single URL, no fallback.
+      3. `EGRESS_CHECK_URLS` env var — operator-supplied chain.
+      4. Built-in DEFAULT_EGRESS_URLS chain.
+    """
+    if url_override:
+        return [url_override]
+    single = os.getenv("EGRESS_CHECK_URL", "").strip()
+    if single:
+        return [single]
+    chain = os.getenv("EGRESS_CHECK_URLS", "").strip()
+    if chain:
+        urls = [u.strip() for u in chain.split(",") if u.strip()]
+        if urls:
+            return urls
+    return list(DEFAULT_EGRESS_URLS)
+
+
 def _parse_prefixes(raw: str) -> List[ipaddress._BaseNetwork]:
     nets: List[ipaddress._BaseNetwork] = []
     for piece in (raw or "").split(","):
@@ -69,21 +109,42 @@ def get_egress_ip(
     url: Optional[str] = None,
     timeout: Optional[float] = None,
 ) -> str:
-    """Fetch the public egress IP. Raises requests.RequestException on failure.
+    """Fetch the public egress IP.
+
+    Walks the URL chain returned by `_resolve_egress_urls(url)` and
+    returns the IP from the first service that responds with a parseable
+    IP address. Raises the LAST exception encountered if every URL
+    fails.
 
     Intentionally uses bare `requests.get` (no session, no proxies). If
     you've routed the default interface through WireGuard, this call
     automatically goes through it. If WG is down, this call goes out via
     your physical NIC — and that's exactly the failure we want to detect.
     """
-    url = url or os.getenv("EGRESS_CHECK_URL", "https://api.ipify.org")
     timeout = timeout or float(os.getenv("EGRESS_CHECK_TIMEOUT", "10"))
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    ip = resp.text.strip()
-    # Validate the response is actually an IP, not "rate limited" HTML.
-    ipaddress.ip_address(ip)
-    return ip
+    urls = _resolve_egress_urls(url)
+    errors: list[str] = []
+    for u in urls:
+        try:
+            resp = requests.get(u, timeout=timeout)
+            resp.raise_for_status()
+            ip = resp.text.strip()
+            # Validate the response is actually an IP, not "rate limited" HTML
+            # or a CDN's 200-with-error-body. ip_address raises ValueError if
+            # the text isn't an IP, which falls through to the next URL.
+            ipaddress.ip_address(ip)
+            if len(urls) > 1 and u != urls[0]:
+                log.info("egress: using fallback URL %s (first %d failed)",
+                         u, urls.index(u))
+            return ip
+        except (requests.RequestException, ValueError) as exc:
+            errors.append(f"{u}: {exc.__class__.__name__}: {exc}")
+            continue
+    # All URLs failed — surface a combined message so the operator can
+    # see which services were tried.
+    raise RuntimeError(
+        "egress lookup failed across all " f"{len(urls)} URL(s): " + " | ".join(errors)
+    )
 
 
 def check_egress(
