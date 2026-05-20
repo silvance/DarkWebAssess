@@ -73,6 +73,7 @@ hiddenimports += [
     "app.cli.cmd_search",
     "app.cli.cmd_summarize",
     "app.cli.cmd_discover",
+    "app.cli.cmd_doctor",
     "app.cli.cmd_network",
     "app.cli.cmd_tor",
     "app.cli.cmd_tray",

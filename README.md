@@ -103,6 +103,11 @@ tests/
 > walks through install, your first watchlist entry, your first collection
 > cycle, the dark-web discovery workflow, and day-to-day habits — with
 > copy-pasteable commands and the expected output at each step.
+>
+> **Already installed but want a sanity check?** Run `dwa doctor` — it
+> runs ~14 checks across Python / DB / YAML configs / Rust accelerator /
+> Tor sidecar / OPSEC preflight / provider keys / Telegram, prints what
+> each one found, and exits non-zero if anything actually needs fixing.
 
 The fastest path: run the one-shot launcher. It pulls the latest commit
 (if you're in a git checkout), creates `.venv/`, installs/updates
