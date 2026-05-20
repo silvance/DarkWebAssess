@@ -4,6 +4,148 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.1.2 — 2026-05-17
+
+Feature + hardening release. Real Windows install experience, dark-web
+visibility via index-only ingestion, CSAM-defense MIME policy, optional
+OPSEC egress preflight, and a Rust extractor accelerator.
+
+### Added
+
+**Windows UX**
+- `dwa.cmd` shim — top-level Windows entry point that always invokes the
+  project's venv Python. Eliminates the "ran system Python instead of
+  venv" foot-gun (the root cause of the v0.1.1 `bs4`-missing reports).
+- `run.bat` — pauses on error so a double-click user can read the
+  failure before the window closes.
+- `launch.py` / frozen `.exe` — auto-opens the browser when the
+  dashboard port is listening, plus a `tray` target and `--no-browser`
+  flag.
+- System-tray launcher (`app/ui/tray.py`, requires `pystray` +
+  `Pillow`). Menu: Open Dashboard / Run Collection Now / Open Data
+  Folder / About / Quit. Dashboard subprocess is detached
+  (`CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP` on Windows) and torn
+  down cleanly on Quit.
+- `installer/Install-DarkWebAssess.ps1` + `Uninstall-DarkWebAssess.ps1`
+  — per-user install (no admin), bundle → `%LOCALAPPDATA%\Programs\…`,
+  data → `%APPDATA%\DarkWebAssess`. Creates Start Menu + Desktop
+  shortcuts, pre-runs `init-db` + `sync-config`, launches the tray.
+- `DWA_DATA_DIR` env var so the data directory can be set independently
+  of the install location.
+
+**Dark-web discovery (Option A: index-only)**
+- New `discover` CLI subcommand and `onion_directories.yaml` config.
+  Fetches operator-curated aggregator pages (Ahmia, dark.fail) and
+  extracts the `.onion` URLs they list — but **never** auto-fetches a
+  discovered URL. Each becomes a PENDING candidate in a new
+  `onion_candidates` table. Triage via `discover list / show / approve
+  / reject`; approval prints a `sources.yaml` snippet for the operator
+  to paste.
+- Repository helpers: `upsert_onion_candidate`, `get_onion_candidate`,
+  `list_onion_candidates`, `set_onion_candidate_status`.
+- Hard safety boundaries: the discovery collector only fetches the
+  seeded directory URLs (never a candidate URL it just discovered),
+  validates the host shape against the Tor base32 alphabet for both
+  extraction passes (`<a href>` + free-text fallback), caps response
+  size at 2 MB and link count at 2k per page, and treats rejected
+  status as durable (re-discovery bumps `times_seen` and merges sources
+  but never resets status — the operator's NO sticks).
+
+**Binary-content ingestion policy (CSAM defense)**
+- `app/collectors/mime_policy.py` — strict textual-only allowlist
+  shared across the HTTP-fetching collectors (`onion_collector` and
+  `onion_discovery`). Content-Type must be one of `text/html`,
+  `text/plain`, `text/xml`, `application/xhtml+xml`, `application/xml`,
+  `application/rss+xml`, `application/atom+xml`, `application/json`;
+  AND the first 1 KB must look textual (no NUL bytes, no known binary
+  magic signatures — JPEG, PNG, GIF, PDF, ZIP, RAR, 7z, gzip, MP4,
+  WAV/AVI, OGG, MP3, FLAC, Matroska/WebM, PE/EXE, ELF — and less than
+  5% non-printable). A rejected response yields zero documents (no
+  placeholder row for an attacker to abuse).
+- `onion_collector` no longer stores a hex-elided placeholder for
+  binary responses. The fetch is still recorded in source health, but
+  no bytes land in the document store.
+
+**OPSEC: egress IP verification**
+- `dwa network-check` — calls `https://api.ipify.org`, validates the
+  result is a real IP, compares to `EXPECTED_EGRESS_PREFIXES` (a
+  comma-separated CIDR allowlist). Exit 0 = in allowlist, 1 = outside,
+  2 = lookup failed.
+- `STRICT_EGRESS=1` preflight on `collect`, `scheduler`, and
+  `discover run`. Refuses to start if the egress IP is outside the
+  allowlist or the lookup itself fails. Fail-closed: if
+  `STRICT_EGRESS=1` and `EXPECTED_EGRESS_PREFIXES` is empty, the
+  preflight refuses immediately rather than fetching with no
+  protection.
+- The tool does **not** manage WireGuard itself — routing is an OS
+  concern (see [`docs/OPSEC.md`](docs/OPSEC.md) for the recommended
+  always-on + fail-closed kill-switch setup). The preflight is
+  defense-in-depth on top of that.
+
+**Rust extractor accelerator (opt-in)**
+- `crates/dwa_extractors/` — PyO3 extension that takes over the
+  regex hot path (URL / email / IPv4 / IPv6 / MD5 / SHA1 / SHA256 /
+  CVE). One `abi3-py310` wheel works on Python 3.10 through 3.13+.
+  Measured ~24× faster on a 100 KB corpus.
+- `app/extractors/entities.py` detects the wheel at import time
+  (`try: import dwa_extractors`) and routes through it when available.
+  Pure Python is the fallback — pip-install-only clones still run
+  identically.
+- `.github/workflows/build-wheels.yml` — `maturin-action` matrix for
+  Linux (x86_64 + aarch64), macOS (x86_64 + arm64), Windows x86_64.
+  Wheels attach to releases on `v*` tags.
+
+**Watchlist editor (dashboard)**
+- New Watchlist page in the dashboard (analyst+ role). View all
+  entries with type/search/enabled filters, add / edit severity /
+  enabled / description / delete entries with an "I'm sure"
+  confirmation. Every mutation writes a `watchlist_added` /
+  `watchlist_updated` / `watchlist_deleted` row to the audit log with
+  the actor + role.
+
+**Documentation**
+- `docs/TUTORIAL.md` — goal-first walkthrough: install, first
+  watchlist entry, first collection cycle, dark-web visibility,
+  background-mode options, OPSEC preflight, troubleshooting.
+- `docs/OPSEC.md` — WireGuard setup (Windows + Linux), kill-switch
+  firewall rules, the `STRICT_EGRESS` workflow, stronger options
+  (Linux netns, Windows per-exe firewall rule, Whonix/Tails for
+  operational use).
+- `crates/dwa_extractors/README.md` — coverage, dict shape, build
+  notes, bench notes.
+
+### Changed
+
+- `requirements.txt`: added `pystray>=0.19.5`, `Pillow>=10.0.0` for the
+  tray launcher.
+- `app/config.py`: honors `DWA_DATA_DIR` and `ONION_DIRECTORIES_PATH`.
+- `mini-threat-intel.spec`: bundles `onion_directories.yaml`, the new
+  collectors, the tray module, the egress module, and the discovery
+  / network / tray CLI commands as hidden imports.
+- `app/entry.py`: frozen `.exe` honors `DWA_DATA_DIR`, points
+  `ONION_DIRECTORIES_PATH` at the bundled YAML, and dispatches
+  `mini-threat-intel.exe tray` to the tray launcher.
+
+### Tests
+
+- New cases (post-v0.1.1):
+  - `tests/test_onion_discovery.py` — 19 cases (URL normalization,
+    HTML extraction, repo upserts, durable rejection, etc.)
+  - `tests/test_mime_policy.py` — 19 cases (MIME allowlist + magic-byte
+    sniff)
+  - `tests/test_onion_collector.py` — extended for the binary-drop
+    semantics (no placeholder row on JPEG / PNG / octet-stream /
+    missing Content-Type)
+  - `tests/test_egress.py` — 17 cases (CIDR parsing, allowlist match,
+    lookup failure, `STRICT_EGRESS` preflight)
+  - `tests/test_extractor_bench.py` — 5 cases (Rust↔Python output
+    parity, known-corpus signal extraction, ≥1.5× speedup assertion,
+    dict shape, end-to-end `extract_all` smoke). Auto-skips when the
+    Rust wheel isn't installed.
+- 10 pure-Rust unit tests in `crates/dwa_extractors/src/lib.rs`
+  (`cargo test --release`).
+- Full Python suite: **284 passing** (was 219 at v0.1.1).
+
 ## v0.1.1 — 2026-05-10
 
 Patch release. Fixes a fatal bug that broke every dashboard page on the
