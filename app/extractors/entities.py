@@ -5,6 +5,7 @@ The public entrypoint is `extract_all(text) -> list[dict]`, which deduplicates
 on (entity_type, entity_value).
 """
 import ipaddress
+import os
 import re
 from typing import Iterable, List
 
@@ -207,12 +208,31 @@ def extract_cves(text: str) -> List[dict]:
 # crates/dwa_extractors/) is installed, we use it for the URL / email /
 # IPv4 / IPv6 / hash / CVE hot path — typically 10-50x faster. Pure
 # Python is the fallback; the project runs identically either way.
+#
+# DWA_DISABLE_RUST=1 forces the Python path even when the wheel is
+# installed. Useful for:
+#   - debugging an extraction difference suspected in the Rust side
+#   - benchmarking the Python implementation against the Rust one on
+#     the same hardware without uninstalling the wheel
+#   - operator preference (e.g. you don't trust the bundled .so)
 try:
     from dwa_extractors import extract_observables as _rust_extract_observables
     _HAVE_RUST = True
 except ImportError:
     _rust_extract_observables = None  # type: ignore[assignment]
     _HAVE_RUST = False
+
+
+def _rust_enabled() -> bool:
+    """Whether the Rust accelerator should be used for this call.
+
+    Checked on every call (not just at import) so DWA_DISABLE_RUST can
+    be flipped at runtime — important for tests and for the operator
+    toggling without restarting the process.
+    """
+    if not _HAVE_RUST:
+        return False
+    return os.getenv("DWA_DISABLE_RUST", "0").lower() not in ("1", "true", "yes", "on")
 
 
 def _python_simple_observables(text: str) -> List[dict]:
@@ -230,12 +250,13 @@ def _python_simple_observables(text: str) -> List[dict]:
 def extract_simple_observables(text: str) -> List[dict]:
     """Extract URL / email / IPv4 / IPv6 / MD5 / SHA1 / SHA256 / CVE.
 
-    Routes through the Rust accelerator when available, falls back to the
-    pure-Python extractors otherwise. The two implementations are kept
-    in sync by `tests/test_extractor_bench.py`, which asserts identical
-    output on a synthetic corpus.
+    Routes through the Rust accelerator when available and not disabled,
+    falls back to the pure-Python extractors otherwise. The two
+    implementations are kept in sync by
+    `tests/test_extractor_bench.py`, which asserts identical output on a
+    synthetic corpus.
     """
-    if _HAVE_RUST:
+    if _rust_enabled():
         return _rust_extract_observables(text)
     return _python_simple_observables(text)
 

@@ -123,3 +123,58 @@ def test_extract_all_uses_rust_when_available():
     result = ent.extract_all("hit https://bad.example.com/ CVE-2024-3400 alice@x.com")
     types = {r["entity_type"] for r in result}
     assert {"url", "cve", "email"}.issubset(types)
+
+
+# --- DWA_DISABLE_RUST runtime toggle ----------------------------------
+def test_disable_rust_env_routes_through_python(monkeypatch):
+    """When DWA_DISABLE_RUST=1, even if the Rust wheel is installed,
+    extract_simple_observables() takes the Python path. We verify by
+    monkeypatching the Rust function to fail loudly — if it's called,
+    the test will explode."""
+    def boom(text):
+        pytest.fail("DWA_DISABLE_RUST=1 but Rust extractor was still called")
+    monkeypatch.setattr(ent, "_rust_extract_observables", boom)
+    monkeypatch.setenv("DWA_DISABLE_RUST", "1")
+    result = ent.extract_simple_observables("alice@example.com CVE-2024-3400")
+    types = {o["entity_type"] for o in result}
+    assert {"email", "cve"}.issubset(types)
+
+
+def test_disable_rust_accepts_common_truthy_values(monkeypatch):
+    monkeypatch.setattr(ent, "_rust_extract_observables",
+                        lambda _t: pytest.fail("Rust still active"))
+    for v in ("1", "true", "yes", "on", "TRUE", "YES"):
+        monkeypatch.setenv("DWA_DISABLE_RUST", v)
+        assert ent._rust_enabled() is False, v
+
+
+def test_rust_enabled_when_env_unset_or_falsy(monkeypatch):
+    monkeypatch.delenv("DWA_DISABLE_RUST", raising=False)
+    assert ent._rust_enabled() is True
+    for v in ("0", "false", "no", "off"):
+        monkeypatch.setenv("DWA_DISABLE_RUST", v)
+        assert ent._rust_enabled() is True, v
+
+
+def test_python_fallback_matches_rust_on_extract_all(monkeypatch):
+    """Regression coverage gap: existing extract_all tests run with Rust
+    when the wheel is installed, so the Python fallback never exercises
+    in CI. Force-disable Rust and verify extract_all still produces the
+    expected observables for a realistic mixed-content input."""
+    monkeypatch.setenv("DWA_DISABLE_RUST", "1")
+    text = (
+        "Compromise at example.com via https://evil.example.com/c2 hitting "
+        "alice@example.com from 10.20.30.40 / "
+        "2001:0db8:0000:0000:0000:0000:0000:0001. Payload SHA256 "
+        + ("a" * 64) + ". CVE-2024-3400 was the vector."
+    )
+    result = ent.extract_all(text)
+    keys = {(o["entity_type"], o["entity_value"]) for o in result}
+    assert ("url", "https://evil.example.com/c2") in keys
+    assert ("email", "alice@example.com") in keys
+    assert ("ip", "10.20.30.40") in keys
+    assert ("ipv6", "2001:db8::1") in keys
+    assert ("cve", "CVE-2024-3400") in keys
+    assert ("sha256", "a" * 64) in keys
+    # Domain extractor (Python-only) still runs.
+    assert ("domain", "example.com") in keys
