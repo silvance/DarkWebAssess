@@ -159,6 +159,7 @@ def _cmd_show(args) -> None:
 
 
 def _cmd_approve(args) -> None:
+    from app.auth.audit import record_audit
     from app.database import get_connection
     from app.repository import set_onion_candidate_status
 
@@ -167,6 +168,16 @@ def _cmd_approve(args) -> None:
             conn, args.candidate_id, "approved",
             reviewed_by=args.reviewer, notes=args.notes,
         )
+        if row is not None:
+            record_audit(
+                conn, action="discover_approved",
+                actor=args.reviewer, actor_role="cli",
+                target_type="onion_candidate", target_id=str(row["id"]),
+                payload={
+                    "url": row["url"], "host": row["host"],
+                    "notes": args.notes,
+                },
+            )
         conn.commit()
     if row is None:
         print(f"[discover] no candidate with id={args.candidate_id}.", file=sys.stderr)
@@ -185,6 +196,7 @@ def _cmd_approve(args) -> None:
 
 
 def _cmd_reject(args) -> None:
+    from app.auth.audit import record_audit
     from app.database import get_connection
     from app.repository import set_onion_candidate_status
 
@@ -193,6 +205,16 @@ def _cmd_reject(args) -> None:
             conn, args.candidate_id, "rejected",
             reviewed_by=args.reviewer, notes=args.notes,
         )
+        if row is not None:
+            record_audit(
+                conn, action="discover_rejected",
+                actor=args.reviewer, actor_role="cli",
+                target_type="onion_candidate", target_id=str(row["id"]),
+                payload={
+                    "url": row["url"], "host": row["host"],
+                    "notes": args.notes,
+                },
+            )
         conn.commit()
     if row is None:
         print(f"[discover] no candidate with id={args.candidate_id}.", file=sys.stderr)
