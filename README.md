@@ -282,6 +282,11 @@ attached to GitHub Releases on `v*` tags. Once published you can:
 pip install dwa_extractors
 ```
 
+To force the Python fallback even when the wheel is installed (debugging,
+benchmarking, operator preference), set `DWA_DISABLE_RUST=1` before
+launching the tool. The toggle is checked on every extraction call, so
+no restart is needed.
+
 See [`crates/dwa_extractors/README.md`](crates/dwa_extractors/README.md)
 for the coverage list, dict shape, and bench notes.
 
