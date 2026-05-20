@@ -100,6 +100,13 @@ commands all run the same check at startup and refuse to proceed if the
 egress IP is outside the allowlist (or if the lookup itself fails). This
 is the "even if WG dropped, the tool won't leak" property.
 
+The check tries a chain of IP-echo services
+(`api.ipify.org` → `icanhazip.com` → `ifconfig.me/ip` →
+`ipv4.icanhazip.com`) in order until one returns a parseable IP, so a
+single service being down doesn't block the preflight. Override the
+chain with `EGRESS_CHECK_URLS=url1,url2,...`; pin to a single endpoint
+with `EGRESS_CHECK_URL=https://your.choice/`.
+
 ## Stronger options
 
 - **Per-process network namespace (Linux only).** Run the tool in a
