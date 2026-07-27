@@ -4,7 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.1.2 — 2026-05-17
+## Unreleased
+
+### Added
+
+- **Onboarding panel on the dashboard Overview.** On a fresh install the
+  Overview page shows a context-aware Getting Started guide instead of a
+  wall of zeros: a 3-step walkthrough when the DB is empty, a "run a
+  collection" nudge when you have watchlist rules but no documents, and
+  an "add watchlist rules" nudge when you have documents but nothing to
+  match. Disappears automatically once the tool has both.
+- **`demo-seed` / `demo-clear` commands.** Populate the DB with fictional
+  sample threat data so a new operator can explore a fully-populated
+  dashboard before wiring up real sources. The sample documents run
+  through the real pipeline (extract → match → score), so the entities,
+  matches, and scores are genuine, not hand-faked. All content is
+  unambiguously fake (RFC-2606 `.example` domains, documentation-range
+  IPs) and the demo source is disabled so a real `collect` never fetches
+  it. `demo-clear` removes only the demo rows, tagged by source name and
+  a `[demo]` description marker — it never touches operator-added data.
+  Both commands are idempotent.
 
 Feature + hardening release. Real Windows install experience, dark-web
 visibility via index-only ingestion, CSAM-defense MIME policy, optional

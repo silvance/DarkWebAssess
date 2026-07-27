@@ -66,12 +66,21 @@ cd DarkWebAssess
 
 After the dashboard opens (`http://localhost:8501/`):
 
-- **Overview** — counts and recent activity (empty at first)
+- **Overview** — counts and recent activity. On a fresh install this shows
+  a **Getting Started** panel walking you through the first three steps;
+  it disappears once you have watchlist rules and collected documents.
 - **Matches** — anything that hit your watchlist (empty)
 - **Watchlist** — the editor you'll use in a minute
 - **Cases** — investigations you've opened
 - **Sources** — health/status of every configured collector
 - **Discovery** — pending dark-web candidates (empty until you opt in)
+
+> **Want to see it populated before configuring anything?** Run
+> `dwa demo-seed` (or `python -m app.main demo-seed`). It loads a handful of
+> fictional threat reports through the real pipeline, so Overview, Matches,
+> Entities, and Cases all light up with sample data you can click around.
+> When you're done exploring, `dwa demo-clear` removes every trace of it —
+> it only deletes the demo rows, never anything you added.
 
 If auth is off (default), you're effectively an admin. To turn auth on
 for real use:

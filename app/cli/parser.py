@@ -8,6 +8,7 @@ from app.cli import (
     cmd_backup,
     cmd_cases,
     cmd_collection,
+    cmd_demo,
     cmd_discover,
     cmd_doctor,
     cmd_enrich,
@@ -77,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_discover.register(sub)
     cmd_doctor.register(sub)
     cmd_network.register(sub)
+    cmd_demo.register(sub)
     cmd_tray.register(sub)
 
     return p

@@ -212,7 +212,18 @@ python -m app.main pivot domain:example.com            # relationship pivot from
 python -m app.main pivot cve:CVE-2024-3400 --neighbor-type domain --limit 10
 python -m app.main tor-check                           # smoke-test Tor SOCKS proxy
 python -m app.main alert-test     # send a test Telegram alert
+python -m app.main doctor                              # health check: config / DB / OPSEC / providers
+python -m app.main demo-seed                           # load fictional sample data to explore the UI
+python -m app.main demo-clear                          # remove the sample data again
 ```
+
+**First time here?** Run `dwa demo-seed` (or `python -m app.main demo-seed`)
+to populate the dashboard with fictional sample threat data — real
+extractors, real matches, nothing to configure — then open the dashboard
+and click through Overview → Matches → Cases. `dwa demo-clear` wipes it
+when you're done. Everything it adds is fake (RFC-2606 `.example` domains,
+documentation-range IPs) and the demo source is disabled so a real
+`collect` never touches it.
 
 Scoring is also applied automatically inside `collect` and `match` for newly
 created matches, and `severity` is updated to reflect the score band:
