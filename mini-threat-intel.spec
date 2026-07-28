@@ -57,6 +57,7 @@ datas += [
 hiddenimports += [
     "app.main",
     "app.pipeline",
+    "app.demo",
     "app.config_models",
     # CLI subcommand modules — registered by parser.py but loaded via importlib
     "app.cli.parser",
@@ -72,6 +73,7 @@ hiddenimports += [
     "app.cli.cmd_score",
     "app.cli.cmd_search",
     "app.cli.cmd_summarize",
+    "app.cli.cmd_demo",
     "app.cli.cmd_discover",
     "app.cli.cmd_doctor",
     "app.cli.cmd_network",

@@ -42,6 +42,56 @@ def _query(sql: str, params: tuple = ()) -> pd.DataFrame:
     return pd.read_sql_query(sql, _conn(), params=params)
 
 
+def _onboarding_panel(docs: int, watchlist_rows: int):
+    """Show a getting-started guide until the tool has real data.
+
+    Three states:
+      - brand new (no watchlist, no docs): full 3-step walkthrough
+      - watchlist set but nothing collected: nudge to run a collection
+      - collected but no watchlist: nudge to add watch rules
+    """
+    if docs > 0 and watchlist_rows > 0:
+        return  # fully up and running — no onboarding needed
+
+    st.info("👋 **Getting started** — this panel disappears once you have watchlist rules and collected documents.")
+
+    if watchlist_rows == 0 and docs == 0:
+        st.markdown(
+            "This tool **passively monitors** the sources you configure and "
+            "flags when any of them mention something on your watchlist. "
+            "Three steps to your first match:\n\n"
+            "1. **Add what to watch** — go to the **Watchlist** page and add "
+            "an email, domain, CVE, or keyword you care about. (Or edit "
+            "`watchlist.yaml` and run `dwa sync-config`.)\n"
+            "2. **Collect** — run `dwa collect` in a terminal, or use the "
+            "system-tray **Run Collection Now**. This fetches your configured "
+            "sources and matches them against your watchlist.\n"
+            "3. **Review** — new hits show up on the **Matches** page. Promote "
+            "the real ones to a **Case**.\n\n"
+            "**Just want to look around first?** Run `dwa demo-seed` to load "
+            "fictional sample data, explore every page, then `dwa demo-clear` "
+            "to wipe it."
+        )
+    elif watchlist_rows > 0 and docs == 0:
+        st.markdown(
+            f"You have **{watchlist_rows} watchlist rule(s)** but haven't "
+            "collected anything yet. Run a collection to start matching:\n\n"
+            "- Terminal: `dwa collect`\n"
+            "- System tray: **Run Collection Now**\n"
+            "- Background: `dwa scheduler` (collects every 30 min)\n\n"
+            "Check that your sources are enabled on the **Sources** page first."
+        )
+    elif watchlist_rows == 0 and docs > 0:
+        st.markdown(
+            f"You've collected **{docs} document(s)** but have **no watchlist "
+            "rules**, so nothing can match. Add rules on the **Watchlist** "
+            "page (email / domain / CVE / hash / keyword), then re-run "
+            "`dwa collect` — or `dwa match` to re-check already-collected docs."
+        )
+
+    st.markdown("---")
+
+
 def page_overview():
     st.title("Mini Threat Intelligence — Overview")
 
@@ -49,6 +99,7 @@ def page_overview():
     docs = _query("SELECT COUNT(*) AS n FROM documents")["n"].iloc[0]
     entities = _query("SELECT COUNT(*) AS n FROM entities")["n"].iloc[0]
     matches = _query("SELECT COUNT(*) AS n FROM matches")["n"].iloc[0]
+    watchlist_rows = _query("SELECT COUNT(*) AS n FROM watchlist")["n"].iloc[0]
     new_high = _query(
         "SELECT COUNT(*) AS n FROM matches WHERE status='new' AND severity IN ('high','critical')"
     )["n"].iloc[0]
@@ -60,6 +111,8 @@ def page_overview():
     c3.metric("Matches", int(matches))
     c4.metric("New high/critical", int(new_high))
     c5.metric("Top open score", int(top_score))
+
+    _onboarding_panel(int(docs), int(watchlist_rows))
 
     st.subheader("Top scored open matches")
     top = _query(
