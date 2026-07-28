@@ -219,8 +219,33 @@ python -m app.main demo-seed                           # load fictional sample d
 python -m app.main demo-clear                          # remove the sample data again
 python -m app.main scrub you@example.com               # self-monitoring exposure check
 python -m app.main scrub yourhandle --type username --format md
+python -m app.main export --format csv --since 7d --output iocs.csv
+python -m app.main export --format stix --min-severity high
+python -m app.main export --format misp --output event.json
 ```
 
+### Export / interop
+
+`dwa export` turns your watchlist matches into indicators other tooling
+can ingest — no external libraries, everything rendered natively:
+
+| Format | What it is |
+|---|---|
+| `csv` | flat table, every indicator type, opens in any spreadsheet |
+| `stix` | STIX 2.1 bundle — Indicator (with STIX patterns) / Vulnerability / Malware / Threat Actor objects, deterministic ids for downstream dedupe |
+| `misp` | MISP Event JSON, importable via *Import from… MISP JSON* |
+
+```bash
+dwa export --format csv  --since 7d --output iocs.csv     # last 7 days
+dwa export --format stix --min-severity high              # only high/critical
+dwa export --format misp --output event.json --info "Weekly IOC pack"
+```
+
+Filters: `--since` (`7d` / `24h` / `30m`), `--min-severity`, `--limit`.
+Indicators are deduped on (type, value), `false_positive` matches are
+excluded, and types without a clean STIX/MISP mapping (keyword, handle,
+wallet) are skipped there with a reported count — CSV always includes
+everything.
 ### Email delivery
 
 Reports can be delivered over SMTP (stdlib only — no extra dependency).

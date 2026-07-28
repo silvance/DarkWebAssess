@@ -13,6 +13,7 @@ from app.cli import (
     cmd_doctor,
     cmd_email,
     cmd_enrich,
+    cmd_export,
     cmd_network,
     cmd_pivot,
     cmd_reports,
@@ -82,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_network.register(sub)
     cmd_demo.register(sub)
     cmd_scrub.register(sub)
+    cmd_export.register(sub)
     cmd_email.register(sub)
     cmd_tray.register(sub)
 

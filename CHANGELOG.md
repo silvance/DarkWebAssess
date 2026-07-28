@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Indicator export for interop** — `dwa export --format csv|stix|misp`
+  turns watchlist matches into indicators other TI tooling can ingest,
+  rendered natively (no external libraries, preserving the out-of-the-box
+  property):
+    - `csv` — flat table, every indicator type.
+    - `stix` — STIX 2.1 bundle. Observables (domain / ip / url / email /
+      hash / onion) become Indicator objects with STIX patterns; CVEs →
+      Vulnerability, malware → Malware, actors → Threat Actor. Object ids
+      are deterministic (uuid5 of type+value) so re-exports are dedupe-
+      friendly.
+    - `misp` — MISP Event JSON, importable via *Import from MISP JSON*,
+      with per-indicator attributes, category mapping, and an event
+      threat level derived from the worst severity.
+  Filters: `--since` (`7d`/`24h`/`30m`), `--min-severity`, `--limit`.
+  Indicators are deduped on (type, value), `false_positive` matches are
+  excluded, and types without a clean STIX/MISP mapping are skipped there
+  with a reported count (CSV includes everything). Hash type is refined to
+  md5/sha1/sha256 by length; ip to v4/v6 by form.
 - **Email / SMTP report delivery** (stdlib only, no new dependency). New
   `app/delivery/email.py` sender mirrors the Telegram module
   (`is_configured()` + `send_email()` that returns `(ok, error)` and
