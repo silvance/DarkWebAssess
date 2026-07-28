@@ -215,7 +215,45 @@ python -m app.main alert-test     # send a test Telegram alert
 python -m app.main doctor                              # health check: config / DB / OPSEC / providers
 python -m app.main demo-seed                           # load fictional sample data to explore the UI
 python -m app.main demo-clear                          # remove the sample data again
+python -m app.main scrub you@example.com               # self-monitoring exposure check
+python -m app.main scrub yourhandle --type username --format md
 ```
+
+### Self-monitoring scrub
+
+`dwa scrub <identifier>` checks what's publicly exposed about **an
+identifier you control** — your email, username, or domain. It's the
+OSINT-hygiene equivalent of pulling your own credit report: a
+self-monitoring tool, not a targeting engine (no mass-target mode; every
+provider queries only public/consented surfaces on your behalf).
+
+It runs a set of providers and prints a consolidated exposure report.
+Providers self-skip when they can't run, so you get value even with
+nothing configured:
+
+| Provider | Needs | What it finds |
+|---|---|---|
+| `local_xref` | nothing (offline) | the identifier already appearing in sources **this tool** has collected — the highest-signal hit |
+| `gravatar` | nothing | a public Gravatar avatar/profile tied to the email (often leaks a display name + linked accounts) |
+| `hibp` | `HIBP_API_KEY` (paid) | breaches the email appears in, high-severity when passwords were exposed |
+
+```bash
+dwa scrub you@example.com                 # auto-detects type, prints a text report
+dwa scrub yourhandle --type username
+dwa scrub yourco.example --format md --output exposure.md
+dwa scrub you@example.com --format json   # machine-readable
+```
+
+Runs are saved to the database (`--no-save` to skip) so you can track
+exposure over time. The command exits non-zero when it finds
+high-severity exposure, so it's scriptable
+(`dwa scrub me@x.co || notify-me`).
+
+> **Already run Sherlock / holehe / h8mail via your own scripts?** A
+> follow-up change folds those tools' output into this same report when
+> they're installed — so the scrub consolidates your toolchain rather
+> than replacing it. Native username/email-enumeration providers (no
+> external tools needed) are landing alongside it.
 
 **First time here?** Run `dwa demo-seed` (or `python -m app.main demo-seed`)
 to populate the dashboard with fictional sample threat data — real

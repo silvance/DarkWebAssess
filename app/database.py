@@ -249,6 +249,35 @@ CREATE TABLE IF NOT EXISTS onion_candidates (
 );
 CREATE INDEX IF NOT EXISTS idx_onion_candidates_status ON onion_candidates(status);
 CREATE INDEX IF NOT EXISTS idx_onion_candidates_host ON onion_candidates(host);
+
+CREATE TABLE IF NOT EXISTS scrub_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_type TEXT NOT NULL,
+    target_value TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    providers_run TEXT,
+    findings_count INTEGER NOT NULL DEFAULT 0,
+    highest_severity TEXT,
+    actor TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_scrub_runs_target ON scrub_runs(target_type, target_value);
+CREATE INDEX IF NOT EXISTS idx_scrub_runs_started ON scrub_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS scrub_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES scrub_runs(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    severity TEXT NOT NULL DEFAULT 'info',
+    url TEXT,
+    data_json TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scrub_findings_run ON scrub_findings(run_id);
+CREATE INDEX IF NOT EXISTS idx_scrub_findings_severity ON scrub_findings(severity);
 """
 
 FTS_SCHEMA = """

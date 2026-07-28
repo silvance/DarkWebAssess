@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Self-monitoring `scrub` command.** `dwa scrub <email|username|domain>`
+  checks what's publicly exposed about an identifier you control and
+  prints a consolidated report (text / markdown / json). Framed and
+  built as a self-monitoring tool — no mass-target mode; providers query
+  only public/consented surfaces. Ships three native providers, each
+  self-skipping when it can't run:
+    - `local_xref` (offline, always on) — surfaces the identifier already
+      appearing in sources this tool has collected (watchlist matches,
+      extracted entities, document mentions). The highest-signal check
+      and unique to this platform.
+    - `gravatar` — detects a public Gravatar avatar/profile tied to an
+      email, including a leaked display name + linked social accounts.
+    - `hibp` — Have I Been Pwned breach lookup (needs `HIBP_API_KEY`);
+      raises breaches that exposed passwords or are flagged sensitive to
+      high severity.
+  Runs persist to new `scrub_runs` / `scrub_findings` tables so exposure
+  is trackable over time. Exits non-zero on high-severity findings so it
+  is scriptable. New config: `HIBP_API_KEY`, `SCRUB_HTTP_TIMEOUT`,
+  `SCRUB_REQUEST_DELAY` (polite inter-request spacing). Native
+  username/email-enumeration providers and optional passthrough to
+  installed Sherlock / holehe / h8mail land in follow-up changes.
+
 - **Onboarding panel on the dashboard Overview.** On a fresh install the
   Overview page shows a context-aware Getting Started guide instead of a
   wall of zeros: a 3-step walkthrough when the DB is empty, a "run a

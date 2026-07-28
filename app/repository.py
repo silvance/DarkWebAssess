@@ -439,3 +439,92 @@ def set_onion_candidate_status(
         (s, reviewed_by, utcnow_iso(), notes, int(candidate_id)),
     )
     return get_onion_candidate(conn, candidate_id)
+
+
+# --- scrub runs + findings ---------------------------------------------
+def create_scrub_run(
+    conn: sqlite3.Connection,
+    *,
+    target_type: str,
+    target_value: str,
+    actor: Optional[str] = None,
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO scrub_runs (target_type, target_value, started_at, actor)
+        VALUES (?, ?, ?, ?)
+        """,
+        (target_type, target_value, utcnow_iso(), actor),
+    )
+    return int(cur.lastrowid)
+
+
+def add_scrub_finding(
+    conn: sqlite3.Connection,
+    run_id: int,
+    *,
+    provider: str,
+    kind: str,
+    title: str,
+    severity: str = "info",
+    detail: Optional[str] = None,
+    url: Optional[str] = None,
+    data: Optional[dict] = None,
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO scrub_findings
+            (run_id, provider, kind, title, detail, severity, url, data_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(run_id), provider, kind, title, detail, severity, url,
+            json.dumps(data, default=str) if data is not None else None,
+            utcnow_iso(),
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def finalize_scrub_run(
+    conn: sqlite3.Connection,
+    run_id: int,
+    *,
+    providers_run: list,
+    findings_count: int,
+    highest_severity: Optional[str],
+) -> None:
+    conn.execute(
+        """
+        UPDATE scrub_runs
+        SET finished_at = ?, providers_run = ?, findings_count = ?, highest_severity = ?
+        WHERE id = ?
+        """,
+        (
+            utcnow_iso(), json.dumps(providers_run), int(findings_count),
+            highest_severity, int(run_id),
+        ),
+    )
+
+
+def get_scrub_run(conn: sqlite3.Connection, run_id: int) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT * FROM scrub_runs WHERE id = ?", (int(run_id),)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_scrub_runs(conn: sqlite3.Connection, limit: int = 50) -> list:
+    rows = conn.execute(
+        "SELECT * FROM scrub_runs ORDER BY started_at DESC, id DESC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_scrub_findings(conn: sqlite3.Connection, run_id: int) -> list:
+    rows = conn.execute(
+        "SELECT * FROM scrub_findings WHERE run_id = ? ORDER BY id",
+        (int(run_id),),
+    ).fetchall()
+    return [dict(r) for r in rows]
