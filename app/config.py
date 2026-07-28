@@ -37,6 +37,16 @@ VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY", "")
 ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY", "")
 ABUSECH_AUTH_KEY = os.getenv("ABUSECH_AUTH_KEY", "")  # URLhaus / MalwareBazaar
 
+# --- Self-monitoring "scrub" (personal exposure checks) ---------------------
+# Have I Been Pwned breach API key (paid). When empty, the HIBP scrub
+# provider self-skips. https://haveibeenpwned.com/API/Key
+HIBP_API_KEY = os.getenv("HIBP_API_KEY", "")
+# Per-request timeout for scrub providers (seconds).
+SCRUB_HTTP_TIMEOUT = int(os.getenv("SCRUB_HTTP_TIMEOUT", "15"))
+# Polite delay between outbound requests within a scrub run (seconds, float).
+# Keeps us courteous to the services we query on behalf of the operator.
+SCRUB_REQUEST_DELAY = float(os.getenv("SCRUB_REQUEST_DELAY", "0.5"))
+
 # Re-enrich an entity at most this often per provider.
 ENRICHMENT_MAX_AGE_HOURS = int(os.getenv("ENRICHMENT_MAX_AGE_HOURS", "168"))
 

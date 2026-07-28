@@ -17,6 +17,7 @@ from app.cli import (
     cmd_reports,
     cmd_scheduler,
     cmd_score,
+    cmd_scrub,
     cmd_search,
     cmd_summarize,
     cmd_tor,
@@ -79,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     cmd_doctor.register(sub)
     cmd_network.register(sub)
     cmd_demo.register(sub)
+    cmd_scrub.register(sub)
     cmd_tray.register(sub)
 
     return p
