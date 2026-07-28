@@ -49,6 +49,7 @@ datas += [
     ("suppression.yaml", "."),
     ("onion_directories.yaml", "."),
     ("app/extractors/named_entities.yaml", "app/extractors"),
+    ("app/scrub/data/username_sites.json", "app/scrub/data"),
     ("app/ui/streamlit_app.py", "app/ui"),
 ]
 
@@ -65,6 +66,7 @@ hiddenimports += [
     "app.scrub.providers.gravatar",
     "app.scrub.providers.hibp",
     "app.scrub.providers.local_xref",
+    "app.scrub.providers.username_enum",
     # CLI subcommand modules — registered by parser.py but loaded via importlib
     "app.cli.parser",
     "app.cli._helpers",

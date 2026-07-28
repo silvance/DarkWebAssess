@@ -46,6 +46,15 @@ SCRUB_HTTP_TIMEOUT = int(os.getenv("SCRUB_HTTP_TIMEOUT", "15"))
 # Polite delay between outbound requests within a scrub run (seconds, float).
 # Keeps us courteous to the services we query on behalf of the operator.
 SCRUB_REQUEST_DELAY = float(os.getenv("SCRUB_REQUEST_DELAY", "0.5"))
+# Username enumeration (Sherlock-style). Site list ships bundled; override
+# the path to extend it. 0 = check every bundled site.
+SCRUB_USERNAME_SITES_PATH = os.getenv("SCRUB_USERNAME_SITES_PATH", "")
+SCRUB_USERNAME_MAX_SITES = int(os.getenv("SCRUB_USERNAME_MAX_SITES", "0"))
+# Browser-ish UA so simple existence checks aren't blocked outright.
+SCRUB_USER_AGENT = os.getenv(
+    "SCRUB_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; rv:115.0) Gecko/20100101 Firefox/115.0",
+)
 
 # Re-enrich an entity at most this often per provider.
 ENRICHMENT_MAX_AGE_HOURS = int(os.getenv("ENRICHMENT_MAX_AGE_HOURS", "168"))

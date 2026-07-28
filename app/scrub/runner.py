@@ -23,6 +23,7 @@ from app.scrub.base import Finding, ScrubProvider, Target, max_severity
 from app.scrub.providers.gravatar import GravatarProvider
 from app.scrub.providers.hibp import HibpProvider
 from app.scrub.providers.local_xref import LocalXrefProvider
+from app.scrub.providers.username_enum import UsernameEnumProvider
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def default_providers(conn: sqlite3.Connection) -> List[ScrubProvider]:
         LocalXrefProvider(conn),
         GravatarProvider(),
         HibpProvider(),
+        UsernameEnumProvider(),
     ]
 
 

@@ -26,9 +26,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Runs persist to new `scrub_runs` / `scrub_findings` tables so exposure
   is trackable over time. Exits non-zero on high-severity findings so it
   is scriptable. New config: `HIBP_API_KEY`, `SCRUB_HTTP_TIMEOUT`,
-  `SCRUB_REQUEST_DELAY` (polite inter-request spacing). Native
-  username/email-enumeration providers and optional passthrough to
-  installed Sherlock / holehe / h8mail land in follow-up changes.
+  `SCRUB_REQUEST_DELAY` (polite inter-request spacing).
+- **Native username enumeration** (`username_enum` scrub provider,
+  Sherlock-style). Checks a curated, **bundled** list of ~25 sites
+  (GitHub, GitLab, Reddit, Keybase, Steam, Chess.com, …) for a public
+  profile matching a username — no external tools, no API keys, works
+  out of the box from a release download. Detection is honest about
+  uncertainty: a site that rate-limits, blocks, or returns an unexpected
+  status is reported as *inconclusive*, never a false "not found". Each
+  confirmed profile is a low-severity finding; a coverage summary reports
+  how many sites were checked and how many were inconclusive. Extend the
+  site list via `SCRUB_USERNAME_SITES_PATH` (same schema as the bundled
+  `app/scrub/data/username_sites.json`). Config: `SCRUB_USERNAME_MAX_SITES`,
+  `SCRUB_USER_AGENT`.
 
 - **Onboarding panel on the dashboard Overview.** On a fresh install the
   Overview page shows a context-aware Getting Started guide instead of a

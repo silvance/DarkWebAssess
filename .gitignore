@@ -7,7 +7,9 @@ venv/
 *.db
 *.sqlite
 *.sqlite3
-data/
+# Runtime SQLite/data dir at the repo root only — NOT bundled package data
+# like app/scrub/data/ (anchored so app/**/data/ stays tracked).
+/data/
 .pytest_cache/
 .streamlit/
 .DS_Store
