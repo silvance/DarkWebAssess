@@ -83,6 +83,8 @@ hiddenimports += [
     "app.cli.cmd_summarize",
     "app.cli.cmd_demo",
     "app.cli.cmd_scrub",
+    "app.cli.cmd_email",
+    "app.delivery.email",
     "app.cli.cmd_discover",
     "app.cli.cmd_doctor",
     "app.cli.cmd_network",
