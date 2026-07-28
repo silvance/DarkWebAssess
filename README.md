@@ -199,6 +199,8 @@ python -m app.main report list
 python -m app.main report generate daily_summary --window 24h --format md
 python -m app.main report generate executive --window 30d --format html --output exec.html
 python -m app.main report generate weekly_watchlist --save
+python -m app.main report generate daily_summary --format html --email  # email it
+python -m app.main email-test                         # verify SMTP config
 python -m app.main report list --saved
 python -m app.main report show 1 --format md
 python -m app.main user create alice --role admin     # interactive password prompt
@@ -244,6 +246,22 @@ Indicators are deduped on (type, value), `false_positive` matches are
 excluded, and types without a clean STIX/MISP mapping (keyword, handle,
 wallet) are skipped there with a reported count — CSV always includes
 everything.
+### Email delivery
+
+Reports can be delivered over SMTP (stdlib only — no extra dependency).
+Configure `SMTP_HOST` / `SMTP_FROM` / `SMTP_TO` (and `SMTP_USER` /
+`SMTP_PASSWORD` if your server needs auth) in `.env`, verify with
+`dwa email-test`, then add `--email` to any report:
+
+```bash
+dwa email-test                                              # confirm config
+dwa report generate daily_summary --format html --email     # HTML body
+dwa report generate weekly_watchlist --email --email-to soc@example.com
+```
+
+STARTTLS is the default (`SMTP_USE_TLS=1`); set `SMTP_USE_SSL=1` for
+implicit TLS (port 465). `dwa doctor` reports whether SMTP is fully
+configured, partially configured, or off.
 
 ### Self-monitoring scrub
 

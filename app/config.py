@@ -29,6 +29,20 @@ HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "20"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# --- Email / SMTP delivery (reports, digests). All optional; stdlib only. ---
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "")
+# Comma-separated recipient list.
+SMTP_TO = os.getenv("SMTP_TO", "")
+# STARTTLS on a plaintext port (default). Mutually exclusive with SSL.
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "1").lower() in ("1", "true", "yes", "on")
+# Implicit TLS (SMTPS, usually port 465).
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "0").lower() in ("1", "true", "yes", "on")
+SMTP_TIMEOUT = int(os.getenv("SMTP_TIMEOUT", "30"))
+
 SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 ALERT_MIN_SEVERITY = os.getenv("ALERT_MIN_SEVERITY", "high").lower()
 
