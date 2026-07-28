@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "description": "Curated site definitions for native username enumeration (Sherlock-style). Bundled with the release so the check works out of the box with no external tools. Detection is best-effort: some sites rate-limit or bot-block, in which case the site is reported as 'unknown', never a false 'absent'.",
+    "detect_methods": {
+      "status_code": "present if HTTP 200; absent if status == absent_status (default 404); otherwise unknown",
+      "message": "fetch; if 200, absent when absent_text appears in the body, else present; non-200 -> unknown"
+    },
+    "schema_version": 1
+  },
+  "sites": [
+    {"name": "GitHub", "category": "dev", "url": "https://github.com/{username}", "detect": "status_code"},
+    {"name": "GitLab", "category": "dev", "url": "https://gitlab.com/{username}", "detect": "status_code"},
+    {"name": "Bitbucket", "category": "dev", "url": "https://bitbucket.org/{username}/", "detect": "status_code"},
+    {"name": "Docker Hub", "category": "dev", "url": "https://hub.docker.com/u/{username}", "detect": "status_code"},
+    {"name": "npm", "category": "dev", "url": "https://www.npmjs.com/~{username}", "detect": "status_code"},
+    {"name": "PyPI", "category": "dev", "url": "https://pypi.org/user/{username}/", "detect": "status_code"},
+    {"name": "Replit", "category": "dev", "url": "https://replit.com/@{username}", "detect": "status_code"},
+    {"name": "Dev.to", "category": "dev", "url": "https://dev.to/{username}", "detect": "status_code"},
+    {"name": "CodePen", "category": "dev", "url": "https://codepen.io/{username}", "detect": "status_code"},
+    {"name": "Keybase", "category": "dev", "url": "https://keybase.io/{username}", "detect": "status_code"},
+    {"name": "Reddit", "category": "social", "url": "https://www.reddit.com/user/{username}/about.json", "detect": "status_code"},
+    {"name": "Medium", "category": "social", "url": "https://medium.com/@{username}", "detect": "status_code"},
+    {"name": "HackerNews", "category": "tech", "url": "https://news.ycombinator.com/user?id={username}", "detect": "message", "absent_text": "No such user."},
+    {"name": "Steam", "category": "gaming", "url": "https://steamcommunity.com/id/{username}", "detect": "message", "absent_text": "The specified profile could not be found."},
+    {"name": "Chess.com", "category": "gaming", "url": "https://www.chess.com/member/{username}", "detect": "status_code"},
+    {"name": "Lichess", "category": "gaming", "url": "https://lichess.org/@/{username}", "detect": "status_code"},
+    {"name": "Vimeo", "category": "media", "url": "https://vimeo.com/{username}", "detect": "status_code"},
+    {"name": "Pinterest", "category": "social", "url": "https://www.pinterest.com/{username}/", "detect": "status_code"},
+    {"name": "About.me", "category": "social", "url": "https://about.me/{username}", "detect": "status_code"},
+    {"name": "Kaggle", "category": "dev", "url": "https://www.kaggle.com/{username}", "detect": "status_code"},
+    {"name": "SoundCloud", "category": "media", "url": "https://soundcloud.com/{username}", "detect": "status_code"},
+    {"name": "Wattpad", "category": "social", "url": "https://www.wattpad.com/user/{username}", "detect": "status_code"},
+    {"name": "Flickr", "category": "media", "url": "https://www.flickr.com/people/{username}", "detect": "status_code"},
+    {"name": "Last.fm", "category": "media", "url": "https://www.last.fm/user/{username}", "detect": "status_code"},
+    {"name": "Trello", "category": "productivity", "url": "https://trello.com/{username}", "detect": "status_code"},
+    {"name": "Gravatar", "category": "identity", "url": "https://gravatar.com/{username}", "detect": "status_code"}
+  ]
+}

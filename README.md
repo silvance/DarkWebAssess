@@ -235,6 +235,7 @@ nothing configured:
 |---|---|---|
 | `local_xref` | nothing (offline) | the identifier already appearing in sources **this tool** has collected — the highest-signal hit |
 | `gravatar` | nothing | a public Gravatar avatar/profile tied to the email (often leaks a display name + linked accounts) |
+| `username_enum` | nothing (bundled site list) | public profiles that exist for a username across ~25 sites (GitHub, Reddit, Keybase, Steam, …) — Sherlock-style, no external tools |
 | `hibp` | `HIBP_API_KEY` (paid) | breaches the email appears in, high-severity when passwords were exposed |
 
 ```bash
@@ -249,11 +250,15 @@ exposure over time. The command exits non-zero when it finds
 high-severity exposure, so it's scriptable
 (`dwa scrub me@x.co || notify-me`).
 
-> **Already run Sherlock / holehe / h8mail via your own scripts?** A
-> follow-up change folds those tools' output into this same report when
-> they're installed — so the scrub consolidates your toolchain rather
-> than replacing it. Native username/email-enumeration providers (no
-> external tools needed) are landing alongside it.
+**No external tools required.** Everything the scrub needs ships in the
+release — the username site list is bundled, and every provider self-skips
+if it can't run. You download a build and it works out of the box. The
+username check is deliberately honest: a site that rate-limits or blocks
+the request is reported as *inconclusive*, never a false "not found".
+
+Extend the username site list without touching code by pointing
+`SCRUB_USERNAME_SITES_PATH` at your own JSON (same schema as the bundled
+`app/scrub/data/username_sites.json`).
 
 **First time here?** Run `dwa demo-seed` (or `python -m app.main demo-seed`)
 to populate the dashboard with fictional sample threat data — real
