@@ -320,6 +320,28 @@ def _check_telegram() -> CheckResult:
     )
 
 
+def _check_email() -> CheckResult:
+    host = os.getenv("SMTP_HOST", "").strip()
+    frm = os.getenv("SMTP_FROM", "").strip()
+    to = os.getenv("SMTP_TO", "").strip()
+    if host and frm and to:
+        return CheckResult(
+            "Email delivery", "OK",
+            detail=f"SMTP host + from + to set (host {host})",
+        )
+    if host or frm or to:
+        present = [n for n, v in (("SMTP_HOST", host), ("SMTP_FROM", frm), ("SMTP_TO", to)) if v]
+        return CheckResult(
+            "Email delivery", "WARN",
+            detail=f"partially configured (only {', '.join(present)} set)",
+            hint="Set SMTP_HOST, SMTP_FROM, and SMTP_TO. `dwa email-test` to verify.",
+        )
+    return CheckResult(
+        "Email delivery", "INFO",
+        detail="not configured (report --email will no-op)",
+    )
+
+
 # --- Driver -------------------------------------------------------------
 _STATUS_LABELS = {
     "OK":   "[ OK ]",
@@ -356,6 +378,7 @@ def _run_all_checks(skip_network: bool) -> List[CheckResult]:
         lambda: _check_egress(skip_network),
         _check_provider_keys,
         _check_telegram,
+        _check_email,
     ]
     results: List[CheckResult] = []
     for check in checks:

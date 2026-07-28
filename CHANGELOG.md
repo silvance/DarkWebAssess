@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Email / SMTP report delivery** (stdlib only, no new dependency). New
+  `app/delivery/email.py` sender mirrors the Telegram module
+  (`is_configured()` + `send_email()` that returns `(ok, error)` and
+  never raises). `dwa report generate --email [--email-to …]` delivers a
+  rendered report — HTML body when `--format html`, plain text otherwise.
+  New `dwa email-test` verifies configuration before you rely on it, and
+  `dwa doctor` gains an Email-delivery check (OK / partially-configured
+  WARN / off INFO). Supports STARTTLS (default) and implicit SSL. Config:
+  `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`,
+  `SMTP_TO`, `SMTP_USE_TLS`, `SMTP_USE_SSL`, `SMTP_TIMEOUT`.
+
 - **Self-monitoring `scrub` command.** `dwa scrub <email|username|domain>`
   checks what's publicly exposed about an identifier you control and
   prints a consolidated report (text / markdown / json). Framed and

@@ -19,6 +19,9 @@ def register(sub):
     rg.add_argument("--format", default="md", choices=["md", "markdown", "html", "json"])
     rg.add_argument("--output", help="Write to this path (otherwise stdout).")
     rg.add_argument("--save", action="store_true", help="Persist the report to the DB.")
+    rg.add_argument("--email", action="store_true",
+                    help="Email the report to SMTP_TO (uses HTML when --format html).")
+    rg.add_argument("--email-to", help="Override email recipient(s), comma-separated.")
     rg.set_defaults(func=cmd_report_generate)
 
     rsh = rs.add_parser("show", help="Print a saved report.")
@@ -65,8 +68,37 @@ def cmd_report_generate(args):
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(rendered)
         print(f"Wrote {args.output}")
-    else:
+    elif not getattr(args, "email", False):
         print(rendered)
+
+    if getattr(args, "email", False):
+        _email_report(report, args)
+
+
+def _email_report(report, args):
+    """Deliver a rendered report over SMTP. HTML body when --format html."""
+    from app.delivery.email import is_configured, send_email, unconfigured_reason
+    from app.reports.renderers import render
+
+    if not is_configured() and not getattr(args, "email_to", None):
+        print(f"[email] not configured: {unconfigured_reason()}")
+        return
+
+    title = getattr(report, "title", None) or f"DarkWebAssess report: {args.name}"
+    fmt = args.format
+    if fmt == "html":
+        body_html = render(report, "html")
+        body_text = render(report, "md")
+        ok, err = send_email(title, body_text, body_html=body_html,
+                             to=getattr(args, "email_to", None))
+    else:
+        body_text = render(report, "md" if fmt in ("md", "markdown") else fmt)
+        ok, err = send_email(title, body_text, to=getattr(args, "email_to", None))
+
+    if ok:
+        print(f"[email] sent report '{title}'")
+    else:
+        print(f"[email] send failed: {err}")
 
 
 def cmd_report_show(args):
