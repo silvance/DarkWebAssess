@@ -1,13 +1,22 @@
-# mini-threat-intel (Milestone 1)
+# DarkWebAssess
 
-A small self-hosted threat intelligence platform. **Milestone 1** delivers an
-RSS + watchlist MVP: collect items from RSS feeds, normalize them, extract
-common observables, match against a watchlist, and surface results in a
-Streamlit dashboard. Optional Telegram alerts fire on high/critical matches.
+A small self-hosted threat-intelligence platform (package name
+`mini-threat-intel`). It collects from RSS feeds and — opt-in — Tor onion
+sources, normalizes and extracts observables, matches them against your
+watchlist, scores and enriches the hits, and surfaces everything in a
+Streamlit dashboard. It also does self-monitoring exposure checks
+(`scrub`), indicator export for other TI tooling (CSV / STIX 2.1 / MISP),
+and report delivery over Telegram / email. Ships as a one-shot launcher,
+a Windows installer, and a self-contained PyInstaller build that works out
+of the box.
+
+> **Naming:** the project began as an "RSS + watchlist MVP" (Milestone 1)
+> and has grown well past that. The feature list below is the current
+> state, not the original milestone scope.
 
 ## Scope
 
-In scope for Milestone 1:
+Currently implemented:
 
 - RSS collection
 - SQLite storage
@@ -56,9 +65,27 @@ In scope for Milestone 1:
   ransomware-leak landing (multi-word status phrases, size-near-leak-word
   co-occurrence, countdown / deadline lines). Gives the scorer a +10
   boost for matches on leak-context pages.
+- Dark-web discovery (index-only): `discover` fetches operator-curated
+  aggregator pages and queues the `.onion` URLs they list for manual
+  approval — it never auto-fetches a discovered URL.
+- Self-monitoring exposure check: `scrub <email|username|domain>` runs
+  native providers (local cross-reference, Gravatar, HIBP, Sherlock-style
+  username enumeration over a bundled site list) and reports what's
+  publicly exposed about an identifier you control.
+- Indicator export for interop: `export --format csv|stix|misp` (native,
+  no external libraries), with CSV formula-injection neutralized.
+- Report delivery: Telegram alerts and SMTP email (`report generate
+  --email`, `email-test`).
+- Operator tooling: `doctor` health check, `demo-seed` / `demo-clear`
+  sample data, a dashboard onboarding panel, an OPSEC egress preflight
+  (`network-check` / `STRICT_EGRESS`), and an optional Rust extractor
+  accelerator.
 
-Explicitly **out of scope** here (per the project plan): Tor/onion crawling,
-enrichment APIs, scoring, LLM summaries, case management, authentication.
+**Out of scope** (deliberate safety boundaries): onion *crawling* /
+auto-discovery beyond the operator-approved list, paid-data ingestion,
+threat-actor interaction, automated account creation, malware detonation,
+and credential validation. The tool collects only from sources you
+configure and never follows links into unknown onion space.
 
 ## Repo layout
 
@@ -662,14 +689,21 @@ Frozen runtime behavior:
 
 ## Status
 
-Milestones 1, 2, 5 (enrichment), 6 (scoring), 8 (scheduler), 9 (full-text
-search), 10 (relationship mapping), 11 (LLM analyst summaries), 12 (case
-management), 13 (reporting), and 14 (production hardening) of the larger
-phased plan. See *Roadmap* for what comes next.
+All phases of the original multi-phase plan are implemented: collection
+(RSS + Tor onion), extraction, watchlist matching, scoring + suppression,
+enrichment, full-text search, relationship mapping, LLM analyst summaries,
+case management, reporting, and production hardening (auth + audit +
+backup/restore). Beyond the original plan the tool also ships dark-web
+discovery, a self-monitoring `scrub`, indicator export (CSV / STIX / MISP),
+email delivery, an optional Rust extractor accelerator, a Windows
+installer, and a self-contained release build. Current version:
+`0.1.2` (see [CHANGELOG.md](CHANGELOG.md); the Unreleased section tracks
+work since).
 
 ## Roadmap
 
-The full multi-phase plan (collectors → extractors → matching → enrichment →
-scoring → alerting → search → graph → LLM summaries → case management →
-reporting → hardening) is the long-term direction. Milestone 1 stops at the
-matching/alerting baseline.
+Directions under consideration: broader native scrub providers, more
+report/export formats, and a dashboard settings page. The safety
+boundaries in *Out of scope* above are intentional and not on the roadmap
+(no onion crawling / auto-discovery beyond the approved list, no
+threat-actor interaction, no credential validation).
