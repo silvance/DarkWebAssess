@@ -162,13 +162,24 @@ Useful flags: `--no-pull` (skip git pull), `--no-install` (skip pip), `--port 85
 `--reinstall` (force pip install even if `requirements.txt` is unchanged),
 `--no-browser` (don't auto-open the dashboard URL on launch).
 
-### Windows install (.exe bundle)
+### Download & run (Windows, no Python needed)
 
-After downloading the `mini-threat-intel-windows-*.zip` release artifact and
-extracting it:
+1. Go to the [**Releases** page](https://github.com/silvance/DarkWebAssess/releases/latest)
+   and download the Windows bundle:
+   **`mini-threat-intel-windows-x64-v0.2.0.zip`**.
+2. Right-click the zip → **Extract All**.
+3. Run it — two options:
+
+**Simplest — just run it:** open the extracted `mini-threat-intel`
+folder and double-click **`mini-threat-intel.exe`**. It initializes
+itself on first launch, loads the bundled watchlist/sources, and opens
+the dashboard in your browser at <http://localhost:8501>. No Python, no
+API keys, no external tools required.
+
+**Full install (Start Menu + tray + shortcuts):** from PowerShell in the
+extracted folder:
 
 ```powershell
-cd mini-threat-intel-windows
 powershell -ExecutionPolicy Bypass -File .\installer\Install-DarkWebAssess.ps1
 ```
 
@@ -179,6 +190,10 @@ and launches the tray icon. No admin rights required. Uninstall with
 
 The tray icon menu: **Open Dashboard**, **Run Collection Now**, **Open
 Data Folder**, **About**, **Quit**.
+
+> The exact asset name tracks the release tag
+> (`mini-threat-intel-windows-x64-<version>.zip`). If a newer release
+> exists, the *Releases* page above always links the latest.
 
 If you'd rather wire it up by hand:
 
