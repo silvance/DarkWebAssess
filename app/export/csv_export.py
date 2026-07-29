@@ -1,12 +1,13 @@
 """CSV export of indicators. Includes every indicator type.
 
-Security: indicator fields (value, context, document title, source name)
-originate from ingested documents — i.e. untrusted, attacker-influenceable
-content. A CSV opened in Excel / LibreOffice / Google Sheets interprets a
-cell that begins with a formula trigger (`= + - @`, or a leading TAB/CR) as
-a formula, which enables data exfiltration (HYPERLINK/WEBSERVICE/IMPORTXML)
-or, via DDE + a click-through, command execution (CWE-1236). Every string
-cell is therefore run through `sanitize_csv_cell` before writing.
+Security (CWE-1236, CSV/formula injection): indicator fields (value,
+context, document title, source name) originate from ingested documents —
+i.e. untrusted, attacker-influenceable content. Spreadsheet applications
+(Excel / LibreOffice / Google Sheets) evaluate any cell that begins with a
+formula-trigger character as a formula, which can be abused to exfiltrate
+data or run commands when the exported file is opened. Every string cell is
+therefore run through `sanitize_csv_cell` before writing, so triggering
+cells are rendered as literal text instead of being evaluated.
 """
 from __future__ import annotations
 

