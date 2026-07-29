@@ -47,6 +47,17 @@ jobs:
           $exe = "dist/mini-threat-intel/mini-threat-intel.exe"
           if (-not (Test-Path $exe)) { throw "exe not found at $exe" }
           & $exe --help | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "--help exited $LASTEXITCODE" }
+          & $exe --version | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
+          & $exe init-db | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "init-db exited $LASTEXITCODE" }
+          # doctor exercises config loading, DB, and every bundled data path
+          # in frozen mode. A missing bundled YAML/JSON would FAIL here
+          # (exit 1), catching the packaging-integrity class of bug (e.g. a
+          # data file dropped from the bundle) before it ships in a release.
+          & $exe doctor --no-network | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "doctor reported failures ($LASTEXITCODE) — likely a missing bundled data file" }
 
       - name: Package as zip
         shell: pwsh

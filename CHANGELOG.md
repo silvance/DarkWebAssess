@@ -4,7 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v0.2.0 — 2026-07-29
+
+Feature release: self-monitoring exposure checks (`scrub`), indicator
+interop export (CSV / STIX 2.1 / MISP), SMTP email delivery, a dashboard
+Discovery page, onboarding + demo data, and a `doctor` health check — all
+shipped in the self-contained, download-and-run build.
+
+### Packaging
+
+- **First-run bootstrap.** When the frozen build launches the dashboard on
+  an empty database, it now creates the schema and loads the bundled
+  `watchlist.yaml` / `sources.yaml` automatically, so a freshly-downloaded
+  `.exe` shows real content instead of a blank dashboard. No-op once the DB
+  has any sources or watchlist rules — it never overrides an established
+  install — and best-effort, so it can't block the dashboard from starting.
+- **Stronger release smoke test.** The Windows build workflow now runs
+  `--version`, `init-db`, and `doctor --no-network` against the frozen exe
+  (not just `--help`). `doctor` exercises config loading, the database, and
+  every bundled data path in frozen mode, so a data file dropped from the
+  bundle fails the build instead of shipping broken.
 
 ### Security
 

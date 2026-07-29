@@ -93,8 +93,46 @@ def _open_browser_when_ready(port: int, host: str = "127.0.0.1", timeout: float 
         pass
 
 
+def _first_run_bootstrap() -> None:
+    """On first launch (empty DB), create the schema and load the bundled
+    watchlist/sources so a freshly-downloaded build shows real content
+    instead of a blank dashboard. No-op once the DB has any sources or
+    watchlist rules, so it never overrides an established install. Best
+    effort — never blocks the dashboard from launching.
+    """
+    try:
+        from app.database import db_cursor, init_db
+        init_db()
+        with db_cursor() as conn:
+            has_sources = conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
+            has_watchlist = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+        if has_sources or has_watchlist:
+            return
+        from app.cli._helpers import (
+            load_sources_validated,
+            load_watchlist_validated,
+        )
+        from app.repository import upsert_source, upsert_watchlist_entry
+
+        sources = load_sources_validated()
+        watchlist = load_watchlist_validated()
+        with db_cursor() as conn:
+            for src in sources:
+                upsert_source(conn, src)
+            for entry in watchlist:
+                upsert_watchlist_entry(conn, entry)
+        print(
+            f"[first-run] loaded {len(sources)} sources + {len(watchlist)} "
+            "watchlist entries from bundled config.",
+            flush=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[first-run] bootstrap skipped: {exc}", file=sys.stderr, flush=True)
+
+
 def _run_dashboard(port: int, open_browser: bool = True) -> None:
     """Launch Streamlit in-process (works from a frozen build)."""
+    _first_run_bootstrap()
     if open_browser:
         threading.Thread(
             target=_open_browser_when_ready, args=(port,), daemon=True
