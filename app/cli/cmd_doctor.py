@@ -357,7 +357,7 @@ def _print_result(r: CheckResult) -> None:
     if r.detail:
         print(f"          {r.detail}")
     if r.hint:
-        print(f"          → {r.hint}")
+        print(f"          -> {r.hint}")
 
 
 def _run_all_checks(skip_network: bool) -> List[CheckResult]:

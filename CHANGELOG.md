@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.2.1 — 2026-07-29
+
+Patch release. Fixes the Windows build/runtime.
+
+### Fixed
+
+- **`dwa doctor` crashed on Windows** with
+  `UnicodeEncodeError: 'charmap' codec can't encode character '→'` —
+  the hint lines used a `→` arrow that Windows' default `cp1252` console
+  codec can't encode. This also broke the frozen `.exe` build: the release
+  smoke test runs `doctor` and (correctly) failed the build rather than
+  shipping a broken command. The arrow is now a plain `->`, and — the
+  systemic fix — the CLI reconfigures stdout/stderr to UTF-8
+  (`errors="replace"`) at startup, so no command can crash on a legacy
+  Windows console codepage regardless of the characters it prints.
+
 ## v0.2.0 — 2026-07-29
 
 Feature release: self-monitoring exposure checks (`scrub`), indicator

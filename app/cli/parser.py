@@ -1,6 +1,7 @@
 """Top-level argparse assembler. Each subcommand module registers itself."""
 import argparse
 import logging
+import sys
 
 from app import __version__
 from app.cli import (
@@ -90,7 +91,25 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _force_utf8_output():
+    """Make stdout/stderr UTF-8 so non-ASCII output (arrows, box chars, ✓, …)
+    doesn't crash on a legacy Windows console (cp1252 raises UnicodeEncodeError
+    otherwise). errors='replace' means it degrades to '?' rather than dying.
+    Best-effort — a stream that can't be reconfigured is left alone.
+    """
+    for stream in ("stdout", "stderr"):
+        s = getattr(sys, stream, None)
+        reconfigure = getattr(s, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def main(argv=None):
+    _force_utf8_output()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
