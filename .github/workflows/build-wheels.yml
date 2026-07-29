@@ -6,7 +6,7 @@ name: build-wheels
 on:
   push:
     branches: [main, claude/setup-threat-intel-platform-uWzhb]
-    tags: ['v*']
+    tags: ['v*', '[0-9]*']
   pull_request:
     paths:
       - 'crates/dwa_extractors/**'
@@ -99,7 +99,7 @@ jobs:
     name: attach wheels to release
     needs: [build, sdist]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
