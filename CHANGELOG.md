@@ -99,6 +99,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a `[demo]` description marker — it never touches operator-added data.
   Both commands are idempotent.
 
+## v0.1.2 — 2026-05-17
+
 Feature + hardening release. Real Windows install experience, dark-web
 visibility via index-only ingestion, CSAM-defense MIME policy, optional
 OPSEC egress preflight, and a Rust extractor accelerator.
