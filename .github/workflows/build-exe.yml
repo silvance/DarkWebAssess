@@ -77,6 +77,29 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Rolling "latest" prerelease: every push to the integration branch
+      # (re)publishes a prerelease tagged `latest` with the freshly-built
+      # .exe attached. This means the Releases page always has a downloadable
+      # Windows build with zero tag/branch/version decisions — the versioned
+      # `v*` release flow below still works for proper releases.
+      - name: Publish rolling "latest" prerelease (integration branch)
+        if: github.ref == 'refs/heads/claude/setup-threat-intel-platform-uWzhb'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest build (development)"
+          prerelease: true
+          files: ${{ env.ZIP_NAME }}
+          fail_on_unmatched_files: true
+          body: |
+            Automatically built Windows bundle from the latest integration commit
+            (${{ github.sha }}). **Download `mini-threat-intel-windows-x64-*.zip`
+            below**, extract it, and double-click `mini-threat-intel.exe` inside
+            the `mini-threat-intel` folder — no Python or setup required.
+
+            This is a rolling development build. Versioned releases (v0.x.y) are
+            published separately.
+
       - name: Extract release notes from CHANGELOG
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
