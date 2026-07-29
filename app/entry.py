@@ -133,6 +133,11 @@ def _first_run_bootstrap() -> None:
 def _run_dashboard(port: int, open_browser: bool = True) -> None:
     """Launch Streamlit in-process (works from a frozen build)."""
     _first_run_bootstrap()
+    # In a PyInstaller bundle Streamlit mis-detects "development mode" as ON,
+    # and it then refuses to honor --server.port ("server.port does not work
+    # when global.developmentMode is true"). Force development mode OFF so the
+    # frozen dashboard launches on the chosen port.
+    os.environ["STREAMLIT_GLOBAL_DEVELOPMENT_MODE"] = "false"
     if open_browser:
         threading.Thread(
             target=_open_browser_when_ready, args=(port,), daemon=True
