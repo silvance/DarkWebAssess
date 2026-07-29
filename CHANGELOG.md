@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.2.2 — 2026-07-29
+
+Windows usability patch.
+
+### Fixed
+
+- **Frozen dashboard crashed at launch** with `RuntimeError: server.port
+  does not work when global.developmentMode is true`. In a PyInstaller
+  bundle Streamlit mis-detects development mode as on and refuses the
+  `--server.port`; the launcher now forces
+  `STREAMLIT_GLOBAL_DEVELOPMENT_MODE=false`.
+
+### Added
+
+- **"▶ Run collection now" button in the dashboard** — at the top of the
+  Overview page and in the sidebar (so it's available from any page). Runs
+  one collection cycle in-process with a spinner and reports the result
+  (new documents / matches / alerts / source errors), then refreshes.
+  Removes the need to drop to a terminal or the tray just to collect.
+  Analyst+ when auth is enabled; always available when auth is off (the
+  desktop-app default). Writes a `collect_dashboard` audit row.
+- **Rolling `latest` prerelease**: every integration push republishes a
+  GitHub prerelease tagged `latest` with the freshly built, smoke-tested
+  Windows bundle attached, so a working `.exe` is always downloadable
+  without cutting a version tag.
+- CI: version tags now build whether or not they carry a leading `v`
+  (`v0.2.2` or `0.2.2`), and the release assets attach regardless — a
+  tag-name slip can no longer produce an empty release.
+
 ## v0.2.1 — 2026-07-29
 
 Patch release. Fixes the Windows build/runtime.

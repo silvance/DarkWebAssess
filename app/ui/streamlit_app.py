@@ -59,6 +59,53 @@ def _csv_safe_df(df: pd.DataFrame) -> pd.DataFrame:
     return safe
 
 
+def _can_collect() -> bool:
+    """Running a collection mutates data, so it needs analyst+ — or any user
+    when auth is disabled (the default / desktop-app case)."""
+    from app.auth.users import has_role
+
+    if not _user or _user.get("auth_disabled"):
+        return True
+    return has_role(_user.get("role"), "analyst")
+
+
+def _run_collection_button(key: str, label: str = "▶ Run collection now") -> None:
+    """Render a button that runs one collection cycle in-process, shows the
+    result, and refreshes the page. Hidden for viewers when auth is on."""
+    if not _can_collect():
+        return
+    if not st.button(label, key=key, type="primary"):
+        return
+    from app.pipeline import run_collection_cycle
+
+    with st.spinner("Collecting from your sources — this can take a minute…"):
+        try:
+            totals = run_collection_cycle()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Collection failed: {exc}")
+            return
+    try:
+        from app.auth.audit import record_audit
+        with _conn() as conn:
+            record_audit(
+                conn, action="collect_dashboard",
+                actor=(_user or {}).get("username"),
+                actor_role=(_user or {}).get("role"),
+                payload=totals,
+            )
+            conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+    st.success(
+        f"Done: {totals.get('new', 0)} new document(s), "
+        f"{totals.get('matches', 0)} new match(es), "
+        f"{totals.get('alerts', 0)} alert(s), "
+        f"{totals.get('errors', 0)} source error(s). "
+        "Check the Matches page."
+    )
+    st.rerun()
+
+
 def _onboarding_panel(docs: int, watchlist_rows: int):
     """Show a getting-started guide until the tool has real data.
 
@@ -80,23 +127,22 @@ def _onboarding_panel(docs: int, watchlist_rows: int):
             "1. **Add what to watch** — go to the **Watchlist** page and add "
             "an email, domain, CVE, or keyword you care about. (Or edit "
             "`watchlist.yaml` and run `dwa sync-config`.)\n"
-            "2. **Collect** — run `dwa collect` in a terminal, or use the "
-            "system-tray **Run Collection Now**. This fetches your configured "
-            "sources and matches them against your watchlist.\n"
+            "2. **Collect** — click **▶ Run collection now** (top of this "
+            "page or in the sidebar). This fetches your configured sources "
+            "and matches them against your watchlist.\n"
             "3. **Review** — new hits show up on the **Matches** page. Promote "
             "the real ones to a **Case**.\n\n"
-            "**Just want to look around first?** Run `dwa demo-seed` to load "
-            "fictional sample data, explore every page, then `dwa demo-clear` "
-            "to wipe it."
+            "**Just want to look around first?** Run `mini-threat-intel demo-seed` "
+            "(or `dwa demo-seed`) to load fictional sample data, explore every "
+            "page, then `demo-clear` to wipe it."
         )
     elif watchlist_rows > 0 and docs == 0:
         st.markdown(
             f"You have **{watchlist_rows} watchlist rule(s)** but haven't "
-            "collected anything yet. Run a collection to start matching:\n\n"
-            "- Terminal: `dwa collect`\n"
-            "- System tray: **Run Collection Now**\n"
-            "- Background: `dwa scheduler` (collects every 30 min)\n\n"
-            "Check that your sources are enabled on the **Sources** page first."
+            "collected anything yet. Click **▶ Run collection now** (top of "
+            "this page or in the sidebar) to fetch your sources and start "
+            "matching. Make sure your sources are enabled on the **Sources** "
+            "page first."
         )
     elif watchlist_rows == 0 and docs > 0:
         st.markdown(
@@ -111,6 +157,8 @@ def _onboarding_panel(docs: int, watchlist_rows: int):
 
 def page_overview():
     st.title("Mini Threat Intelligence — Overview")
+
+    _run_collection_button("overview_collect")
 
     c1, c2, c3, c4, c5 = st.columns(5)
     docs = _query("SELECT COUNT(*) AS n FROM documents")["n"].iloc[0]
@@ -1352,6 +1400,10 @@ PAGES = {
     "Jobs": page_jobs,
     "Admin": page_admin,
 }
+
+with st.sidebar:
+    _run_collection_button("sidebar_collect", label="▶ Run collection now")
+    st.markdown("---")
 
 choice = st.sidebar.radio("Page", list(PAGES.keys()))
 PAGES[choice]()
