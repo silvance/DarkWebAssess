@@ -25,6 +25,10 @@ Windows usability patch.
   Removes the need to drop to a terminal or the tray just to collect.
   Analyst+ when auth is enabled; always available when auth is off (the
   desktop-app default). Writes a `collect_dashboard` audit row.
+- **Application icon** — the Windows `.exe` now carries a themed icon (a
+  shield with a watchful eye in the navy/cyan palette) instead of the
+  generic PyInstaller default. Source at `app/assets/icon.ico`
+  (regenerate with `python app/assets/make_icon.py`).
 - **Rolling `latest` prerelease**: every integration push republishes a
   GitHub prerelease tagged `latest` with the freshly built, smoke-tested
   Windows bundle attached, so a working `.exe` is always downloadable

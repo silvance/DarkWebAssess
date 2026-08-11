@@ -177,6 +177,9 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # App icon (shield + watchful eye, navy/cyan theme). PyInstaller ignores
+    # a missing icon gracefully, but it's committed at app/assets/icon.ico.
+    icon="app/assets/icon.ico",
 )
 
 coll = COLLECT(
